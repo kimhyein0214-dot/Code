@@ -1,10 +1,22 @@
+﻿# secrets / local env
+.env
 .env.local
 .env.api
-docker-data/postgres/
-exports/*.csv
-exports/*.tsv
-exports/*.xlsx
-server/node_modules/
-frontend/admin/node_modules/
 frontend/admin/.env
+
+# build artifacts
 frontend/admin/dist/
+frontend/admin/node_modules/
+server/node_modules/
+
+# local docker / data volumes
+docker-data/
+
+# regenerable analysis artifacts
+outputs/
+exports/
+
+# large source exports
+메이크샵_ALL_변경양식.xml
+에이블리 ALL.csv
+플레이오토_일반_ALL판매처 (판매중,수정대기,판매대기 ALL).xlsx
