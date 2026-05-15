@@ -52,15 +52,16 @@ function CodeValue({ value, muted = false }) {
 
 function MappingStatus({ status }) {
   const className = {
-    기준: 'status-active',
-    연결됨: 'status-active',
-    후보: 'status-pending',
-    미매핑: 'status-inactive'
+    기준: 'status-reference',
+    연결됨: 'status-connected',
+    후보: 'status-candidate',
+    미매핑: 'status-unmapped',
+    확인필요: 'status-needs-review'
   }[status] || '';
   return <span className={`status-badge ${className}`}>{status}</span>;
 }
 
-function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes }) {
+function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes, smartstoreCandidateCodes }) {
   const rows = [
     {
       key: 'selfpia',
@@ -90,7 +91,7 @@ function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes
     });
 
   const smartstoreMappings = mappings.filter((mapping) => mapping.channel_code === 'smartstore');
-  if (smartstoreAliasCodes.length > 0 || smartstoreMappings.length > 0) {
+  if (smartstoreMappings.length > 0) {
     smartstoreMappings.forEach((mapping, index) => {
       rows.push({
         key: `smartstore-${mapping.id || index}`,
@@ -103,19 +104,28 @@ function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes
         note: 'smartstore channel mapping'
       });
     });
-
-    if (smartstoreMappings.length === 0) {
-      rows.push({
-        key: 'smartstore-alias',
-        group: '채널',
-        seller: 'Smartstore',
-        productCode: '',
-        optionCode: smartstoreAliasCodes.join(', '),
-        ownSkuCode: ownSkuCodes[0],
-        status: '후보',
-        note: 'smartstore_option_no alias'
-      });
-    }
+  } else if (smartstoreAliasCodes.length > 0) {
+    rows.push({
+      key: 'smartstore-alias',
+      group: '채널',
+      seller: 'Smartstore',
+      productCode: '',
+      optionCode: smartstoreAliasCodes.join(', '),
+      ownSkuCode: ownSkuCodes[0],
+      status: '연결됨',
+      note: 'confirmed smartstore_option_no alias'
+    });
+  } else if (smartstoreCandidateCodes.length > 0) {
+    rows.push({
+      key: 'smartstore-candidate',
+      group: '후보',
+      seller: 'Smartstore',
+      productCode: '',
+      optionCode: smartstoreCandidateCodes.join(', '),
+      ownSkuCode: ownSkuCodes[0],
+      status: '후보',
+      note: '자동 후보 / 운영 미확정'
+    });
   } else {
     rows.push({
       key: 'smartstore-unmapped',
@@ -129,7 +139,44 @@ function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes
     });
   }
 
+  if ((smartstoreMappings.length > 0 || smartstoreAliasCodes.length > 0) && smartstoreCandidateCodes.length > 0) {
+    rows.push({
+      key: 'smartstore-candidate-reference',
+      group: '후보',
+      seller: 'Smartstore',
+      productCode: '',
+      optionCode: smartstoreCandidateCodes.join(', '),
+      ownSkuCode: ownSkuCodes[0],
+      status: '후보',
+      note: 'confirmed 값 우선, 후보는 참고용'
+    });
+  }
+
   return rows;
+}
+
+function buildConnectionSummary({ sku, mappings, ownSkuCodes, codeSummaryRows }) {
+  const connectedChannels = mappings
+    .filter((mapping) => mapping.channel_code)
+    .reduce((acc, mapping) => {
+      const label = channelLabel(mapping.channel_code);
+      acc.set(label, (acc.get(label) || 0) + 1);
+      return acc;
+    }, new Map());
+  const connectedText = [...connectedChannels.entries()]
+    .map(([label, count]) => `${label} ${count}개`)
+    .join(', ');
+  const unmappedSellers = codeSummaryRows
+    .filter((row) => row.status === '미매핑')
+    .map((row) => row.seller);
+
+  return [
+    { label: '기준 SKU', value: sku.selfpia_sku_code || '없음', tone: 'primary' },
+    { label: '자사코드', value: ownSkuCodes[0] || '없음', tone: ownSkuCodes[0] ? 'primary' : 'muted' },
+    { label: '연결 채널', value: connectedText || '없음', tone: connectedText ? 'success' : 'muted' },
+    { label: '미매핑 채널', value: unmappedSellers.length > 0 ? unmappedSellers.join(', ') : '없음', tone: unmappedSellers.length > 0 ? 'warning' : 'muted' },
+    { label: '이미지', value: sku.thumbnail_url || sku.image_url ? '있음' : '없음', tone: sku.thumbnail_url || sku.image_url ? 'success' : 'muted' }
+  ];
 }
 
 export function ProductDetailPage() {
@@ -183,8 +230,10 @@ export function ProductDetailPage() {
   const mappings = sku.channel_mappings || [];
   const ownSkuCodes = aliasValues(aliases, 'own_sku');
   const smartstoreAliasCodes = aliasValues(aliases, 'smartstore_option_no');
+  const smartstoreCandidateCodes = aliasValues(aliases, 'smartstore_option_no_candidate');
   const smartstoreCodes = uniqueValues([...smartstoreAliasCodes, ...smartstoreChannelCodes(mappings)]);
-  const codeSummaryRows = buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes });
+  const codeSummaryRows = buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes, smartstoreCandidateCodes });
+  const connectionSummary = buildConnectionSummary({ sku, mappings, ownSkuCodes, codeSummaryRows });
 
   return (
     <section className="page">
@@ -228,6 +277,15 @@ export function ProductDetailPage() {
             ]}
           />
         </div>
+      </section>
+
+      <section className="connection-summary-panel" aria-label="연결 상태 요약">
+        {connectionSummary.map((item) => (
+          <div className={`connection-summary-item is-${item.tone}`} key={item.label}>
+            <span>{item.label}</span>
+            <strong title={item.value}>{item.value}</strong>
+          </div>
+        ))}
       </section>
 
       <section className="panel code-summary-panel">
@@ -321,14 +379,14 @@ export function ProductDetailPage() {
         </section>
       </div>
 
-      <section className="panel raw-data-panel">
-        <div className="panel-header">
+      <details className="panel raw-data-panel">
+        <summary className="raw-data-summary">
           <div>
             <h2>Raw Alias</h2>
             <p className="hint">요약표 산출에 사용한 원본 alias입니다.</p>
           </div>
           <span className="muted">{aliases.length}건</span>
-        </div>
+        </summary>
         <div className="table-wrap">
           <table className="sticky zebra">
             <thead>
@@ -363,16 +421,16 @@ export function ProductDetailPage() {
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
 
-      <section className="panel raw-data-panel">
-        <div className="panel-header">
+      <details className="panel raw-data-panel">
+        <summary className="raw-data-summary">
           <div>
             <h2>Raw Channel Mapping</h2>
             <p className="hint">요약표 산출에 사용한 판매처 mapping 원본입니다.</p>
           </div>
           <span className="muted">{mappings.length}건</span>
-        </div>
+        </summary>
         <div className="table-wrap">
           <table className="sticky zebra">
             <thead>
@@ -407,7 +465,7 @@ export function ProductDetailPage() {
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
     </section>
   );
 }

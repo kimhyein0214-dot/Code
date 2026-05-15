@@ -1744,3 +1744,72 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
   - `1258-1` (`8d76dbe6-31cc-4682-bf34-190d27eaf37a`, image): `판매처별 코드 요약`, Sellpia, MakeShop, Smartstore `미매핑`, raw tables 확인.
   - `11258-1` (`8f4b3764-0c40-4836-bb60-89e44679b710`, no image): placeholder, `판매처별 코드 요약`, Sellpia, MakeShop, Smartstore `미매핑`, raw tables 확인.
 - 세 샘플 모두 요약표 내 UUID 미노출 확인.
+
+## Product detail v2 connection review UI (2026-05-15)
+
+### 목적
+
+상품 상세 화면을 실제 검수자가 한눈에 연결 상태를 이해할 수 있도록 v2로 다듬었다. DB/API/schema/data 변경 없이 React UI 구성과 CSS만 변경했다.
+
+### 수정 파일
+
+- `frontend/admin/src/pages/products/ProductDetailPage.jsx`
+- `frontend/admin/src/styles.css`
+- `docs/product_management_v1_runbook.md`
+- `docs/codex_handoff_status.md`
+
+### 연결 상태 요약 구성
+
+`판매처별 코드 요약` 위에 `연결 상태 요약` 카드를 추가했다.
+
+- 기준 SKU: `selfpia_sku_code`
+- 자사코드: `own_sku` alias 첫 값, 없으면 `없음`
+- 연결 채널: `sku_channel_mapping.channel_code`별 개수. 예: `MakeShop 1개`
+- 미매핑 채널: 판매처별 요약 row 중 `미매핑` 상태인 판매처. 현재 Smartstore 미매핑 표시.
+- 이미지: `thumbnail_url` 또는 `image_url` 존재 여부에 따라 `있음` / `없음`
+
+### 상태 badge 구성
+
+상태별 class를 분리했다.
+
+- `기준`: `status-reference`
+- `연결됨`: `status-connected`
+- `후보`: `status-candidate`
+- `미매핑`: `status-unmapped`
+- `확인필요`: `status-needs-review`
+
+### Smartstore candidate 처리
+
+- confirmed `smartstore_option_no` alias 또는 `smartstore` channel mapping이 있으면 confirmed row를 우선 표시한다.
+- `code_alias.code_system = 'smartstore_option_no_candidate'` alias가 있으면 `후보` row로 표시한다.
+- confirmed와 candidate가 둘 다 있으면 candidate는 `confirmed 값 우선, 후보는 참고용` 비고로 낮춰 표시한다.
+- 확정값처럼 보이지 않도록 상태는 `후보`, 비고는 `자동 후보 / 운영 미확정` 계열로 표시한다.
+
+### Raw 정보 처리
+
+- Raw Alias와 Raw Channel Mapping은 제거하지 않았다.
+- 두 섹션은 `details` 기반 접기/펼치기 보조 카드로 변경했다.
+- raw 데이터 확인 기능은 유지한다.
+
+### 검증 결과
+
+- `npm.cmd run build`: 성공. React Router dependency `"use client"` ignore 경고 2건은 기존 non-blocking 경고.
+- Browser 확인:
+  - `/products`: 정상 렌더, `SKU ID` 라벨 미노출.
+  - `/products/aliases`: 정상 렌더, Smartstore option no 검색 준비 유지.
+  - `/products/change-requests`: 정상 렌더.
+  - `1000-3`: 연결 상태 요약, MakeShop row, Smartstore 미매핑, 이미지 있음, raw 접기/펼치기 확인.
+  - `1258-1`: 연결 상태 요약, MakeShop row, Smartstore 미매핑, 이미지 있음, raw 접기/펼치기 확인.
+  - `11258-1`: 연결 상태 요약, MakeShop row, Smartstore 미매핑, placeholder, raw 접기/펼치기 확인.
+- 세 상세 샘플 모두 UUID가 메인 요약과 판매처별 요약 표에 노출되지 않음을 확인했다.
+
+### 금지 상태 유지
+
+- 운영 Supabase 변경 없음.
+- NAS 변경 없음.
+- DB schema/data 변경 없음.
+- API endpoint 변경 없음.
+- local DB import/apply 없음.
+- write 기능 추가 없음.
+- change request write 기능 추가 없음.
+- GitHub push / `git add .` / commit 없음.

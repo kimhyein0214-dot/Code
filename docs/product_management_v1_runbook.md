@@ -812,3 +812,45 @@ npm.cmd run dev
 - `/products/8d76dbe6-31cc-4682-bf34-190d27eaf37a` (`1258-1`, image): Sellpia / MakeShop / Smartstore 미매핑 / raw tables 확인.
 - `/products/8f4b3764-0c40-4836-bb60-89e44679b710` (`11258-1`, no image): placeholder + Sellpia / MakeShop / Smartstore 미매핑 / raw tables 확인.
 - `npm.cmd run build`: 성공. React Router dependency `"use client"` ignore 경고 2건은 기존 non-blocking 경고.
+
+## Product detail v2 connection review UI (2026-05-15)
+
+상품 상세 화면을 실제 검수자가 연결 상태를 빠르게 판단할 수 있도록 v2로 다듬었다.
+
+추가/변경:
+
+- hero 아래 `연결 상태 요약`을 추가했다.
+  - 기준 SKU
+  - 자사코드
+  - 연결 채널
+  - 미매핑 채널
+  - 이미지 있음/없음
+- `판매처별 코드 요약` 상태 badge를 명확히 분리했다.
+  - `기준`
+  - `연결됨`
+  - `후보`
+  - `미매핑`
+  - `확인필요`
+- Smartstore 후보 alias 대응을 준비했다.
+  - `code_alias.code_system = 'smartstore_option_no_candidate'`가 있으면 `후보` row로 표시한다.
+  - confirmed `smartstore_option_no` 또는 `smartstore` channel mapping이 있으면 confirmed row를 우선 표시한다.
+  - confirmed와 candidate가 함께 있으면 candidate는 참고용 보조 row로 낮춰 표시한다.
+- Raw Alias / Raw Channel Mapping은 `details` 기반 접기/펼치기 보조 카드로 변경했다.
+
+유지 원칙:
+
+- UUID / `sku_id`는 메인 요약과 판매처별 코드 요약 표에 노출하지 않는다.
+- UUID는 하단 `SKU 정보`의 `내부 ID`로만 작게 표시한다.
+- API endpoint / DB schema / local DB data 변경 없음.
+
+검증:
+
+- `npm.cmd run build`: 성공.
+- `/products`, `/products/aliases`, `/products/change-requests`: 정상 렌더.
+- `1000-3`, `1258-1`, `11258-1` 상세:
+  - 연결 상태 요약 표시.
+  - 판매처별 코드 요약 표시.
+  - MakeShop row 표시.
+  - Smartstore 미매핑 표시.
+  - UUID 메인 요약 미노출.
+  - Raw Alias / Raw Channel Mapping 접기/펼치기 항목 유지.

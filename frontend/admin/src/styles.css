@@ -318,6 +318,55 @@ select {
   overflow-x: auto;
 }
 
+.connection-summary-panel {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.connection-summary-item {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #e6ebf3;
+  border-radius: 16px;
+  box-shadow: 0 10px 26px rgba(30, 41, 59, 0.035);
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 15px;
+}
+
+.connection-summary-item span {
+  color: #7a8596;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.connection-summary-item strong {
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.35;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-summary-item.is-primary {
+  border-color: #cfe0ff;
+}
+
+.connection-summary-item.is-success {
+  border-color: #bbebc9;
+}
+
+.connection-summary-item.is-warning {
+  border-color: #fde68a;
+}
+
+.connection-summary-item.is-muted strong {
+  color: #64748b;
+}
+
 .code-summary-panel {
   padding: 22px;
 }
@@ -350,6 +399,7 @@ select {
 
 .raw-data-panel {
   box-shadow: 0 10px 26px rgba(30, 41, 59, 0.035);
+  padding: 0;
 }
 
 .raw-data-panel .panel-header {
@@ -359,6 +409,52 @@ select {
 .raw-data-panel .panel-header > div {
   display: grid;
   gap: 5px;
+}
+
+.raw-data-summary {
+  align-items: flex-start;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 18px 20px;
+}
+
+.raw-data-summary::-webkit-details-marker {
+  display: none;
+}
+
+.raw-data-summary::after {
+  color: #94a3b8;
+  content: "펼치기";
+  flex: none;
+  font-size: 12px;
+  font-weight: 850;
+  margin-left: 10px;
+}
+
+.raw-data-panel[open] .raw-data-summary::after {
+  content: "접기";
+}
+
+.raw-data-summary > div {
+  display: grid;
+  gap: 5px;
+}
+
+.raw-data-summary h2 {
+  color: #334155;
+  font-size: 16px;
+  margin: 0;
+}
+
+.raw-data-panel > .table-wrap {
+  border-left: 0;
+  border-radius: 0 0 18px 18px;
+  border-right: 0;
+  border-bottom: 0;
+  box-shadow: none;
 }
 
 .panel {
@@ -511,6 +607,31 @@ table.zebra tbody tr:nth-child(even) {
 .status-badge {
   background: #eaf2ff;
   color: #1d4ed8;
+}
+
+.status-reference {
+  background: #eaf2ff;
+  color: #1d4ed8;
+}
+
+.status-connected {
+  background: #eaf8ef;
+  color: #16733d;
+}
+
+.status-candidate {
+  background: #fff4d6;
+  color: #8a5a00;
+}
+
+.status-unmapped {
+  background: #eef1f5;
+  color: #64748b;
+}
+
+.status-needs-review {
+  background: #fff5f5;
+  color: #b42318;
 }
 
 .status-active {
@@ -956,6 +1077,10 @@ table.zebra tbody tr:nth-child(even) {
     grid-template-columns: 1fr;
   }
 
+  .connection-summary-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .product-detail-hero {
     align-items: start;
     grid-template-columns: 130px minmax(0, 1fr);
@@ -993,6 +1118,10 @@ table.zebra tbody tr:nth-child(even) {
   }
 
   .nav {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-summary-panel {
     grid-template-columns: 1fr;
   }
 
