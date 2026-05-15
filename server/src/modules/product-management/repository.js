@@ -2,18 +2,29 @@ import { query } from '../../db.js';
 
 const SKU_SELECT = `
   SELECT
-    sku_id,
-    selfpia_sku_code,
-    selfpia_product_code,
-    selfpia_option_no,
-    virtual_sku_code,
-    product_id,
-    virtual_product_code,
-    product_name,
-    option_value,
-    sku_type,
-    sku_status
-  FROM product_code.v_sku_canonical
+    v.sku_id,
+    v.selfpia_sku_code,
+    v.selfpia_product_code,
+    v.selfpia_option_no,
+    v.virtual_sku_code,
+    v.product_id,
+    v.virtual_product_code,
+    v.product_name,
+    v.option_value,
+    v.sku_type,
+    v.sku_status,
+    img.thumbnail_url,
+    img.image_url
+  FROM product_code.v_sku_canonical v
+  LEFT JOIN LATERAL (
+    SELECT
+      pi.thumbnail_url,
+      pi.image_url
+    FROM product_code.product_image pi
+    WHERE pi.sku_id = v.sku_id
+    ORDER BY pi.is_primary DESC, pi.sort_order ASC, pi.id ASC
+    LIMIT 1
+  ) img ON true
 `;
 
 export async function listSkus({ search, codeSystem, codeValue, limit, offset }) {
@@ -104,6 +115,8 @@ export async function findSkusByCode(codeSystem, codeValue, limit) {
       sm.option_value,
       sm.sku_type,
       sm.status AS sku_status,
+      img.thumbnail_url,
+      img.image_url,
       ms.matched_code_system,
       ms.matched_code_value,
       ms.matched_alias_is_primary
@@ -127,6 +140,15 @@ export async function findSkusByCode(codeSystem, codeValue, limit) {
         code_value
       LIMIT 1
     ) selfpia ON true
+    LEFT JOIN LATERAL (
+      SELECT
+        pi.thumbnail_url,
+        pi.image_url
+      FROM product_code.product_image pi
+      WHERE pi.sku_id = sm.id
+      ORDER BY pi.is_primary DESC, pi.sort_order ASC, pi.id ASC
+      LIMIT 1
+    ) img ON true
     ORDER BY
       ms.sku_id,
       ms.matched_code_system,
@@ -267,6 +289,8 @@ export async function searchProducts({ q, type, limit }) {
       product_name,
       option_value,
       virtual_sku_code,
+      img.thumbnail_url,
+      img.image_url,
       matched_value
     FROM (
       SELECT * FROM sku_matches
@@ -275,6 +299,15 @@ export async function searchProducts({ q, type, limit }) {
       UNION ALL
       SELECT * FROM channel_matches
     ) results
+    LEFT JOIN LATERAL (
+      SELECT
+        pi.thumbnail_url,
+        pi.image_url
+      FROM product_code.product_image pi
+      WHERE pi.sku_id = results.sku_id
+      ORDER BY pi.is_primary DESC, pi.sort_order ASC, pi.id ASC
+      LIMIT 1
+    ) img ON true
     ORDER BY result_type, sku_id, matched_value
     LIMIT $3
     `,

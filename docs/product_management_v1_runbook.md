@@ -469,3 +469,248 @@ npm.cmd run dev
 - local DB에 `product_code.product_image` 또는 대응 이미지 source 적재 필요.
 - API list/detail/by-code 응답에 `thumbnail_url` 또는 `image_url` 필드 추가 필요.
 - DB schema patch와 운영/로컬 export-import 절차는 별도 승인 후 진행.
+
+## v1 image connection step 2 preparation (2026-05-15)
+
+실제 이미지 연결을 위한 상태 점검과 SQL 초안 작성까지만 진행했다. 현재 workspace에는 `product_image` export CSV가 없고, local DB에도 `product_code.product_image` 테이블이 없으므로 DB apply/import와 API join 변경은 보류했다.
+
+### 현재 확인 결과
+
+- local Docker containers: `product_ops_test_postgres`, `product_ops_api_local` running.
+- local DB: `product_ops_test`.
+- `to_regclass('product_code.product_image')`: null.
+- image 관련 export/search 결과: `exports`, `outputs`, `sql`, `scripts`에서 기존 image/product_image/thumbnail 파일 없음.
+- product master data:
+  - `product_code.product_master`: 6,175 rows.
+  - `product_code.sku_master`: 33,289 rows.
+  - `product_code.code_alias`: 65,273 rows.
+  - `product_code.v_sku_canonical`: 33,291 rows.
+- frontend는 이미 `row.thumbnail_url || row.image_url`을 `ProductThumbnail`에 전달한다.
+- API repository는 아직 `product_image`를 join하지 않는다. 기존 응답 필드만 유지된다.
+
+### 작성한 SQL 초안
+
+- `sql/export_product_code_product_image_select_only.sql`: 운영 source에서 image rows를 SELECT-only CSV로 내보내기 위한 초안.
+- `sql/schema_local_patch_product_image.sql`: local-only `product_code.product_image` DDL 초안. 아직 미적용.
+- `sql/precheck_product_image_import.sql`: local DB readiness/read-only check.
+- `sql/stage_product_image_import.sql`: CSV를 TEMP table로 올리는 stage 초안. persistent write 없음.
+- `sql/dryrun_product_image_import.sql`: CSV row 분류 dryrun. `BEGIN ... ROLLBACK`, persistent write 없음.
+- `sql/postcheck_product_image_import.sql`: 향후 apply 후 image coverage 확인. table 미존재 상태에서도 0건으로 안전 통과.
+
+### 검증 결과
+
+실행한 것:
+
+```powershell
+docker exec product_ops_test_postgres psql -U product_ops_tester -d product_ops_test -v ON_ERROR_STOP=1 -P pager=off -f /tmp/precheck_product_image_import.sql
+docker exec product_ops_test_postgres psql -U product_ops_tester -d product_ops_test -v ON_ERROR_STOP=1 -P pager=off -f /tmp/postcheck_product_image_import.sql
+```
+
+결과:
+
+- `precheck_product_image_import.sql`: 성공. `product_image_table`은 null, 기존 master/view row count 정상.
+- `postcheck_product_image_import.sql`: 성공. table 미존재 notice 후 image rows 0건, `1258-1`, `11258-1`, `LOCAL_TEST_PM_1258-1` 모두 image URL null 확인.
+
+실행하지 않은 것:
+
+- `schema_local_patch_product_image.sql`: DDL 미적용.
+- `stage_product_image_import.sql`: export CSV 없음으로 미실행.
+- `dryrun_product_image_import.sql`: export CSV 없음으로 미실행.
+- API repository join 변경: 보류.
+- frontend 코드 변경: 보류.
+
+### 다음 승인 필요 항목
+
+1. 운영 Supabase `product_image` 구조 확인 및 SELECT-only export 실행 승인.
+2. export CSV 확보 후 `schema_local_patch_product_image.sql` local-only 적용 승인.
+3. stage/dryrun/postcheck 결과 검토 후 apply SQL 작성 여부 승인.
+4. local DB에 image table/data가 준비된 뒤 API `thumbnail_url` / `image_url` join 변경 승인.
+
+## v1 image CSV coverage and dryrun (2026-05-15)
+
+`exports/selfpia_image_url.csv`가 확보되어 local Docker PostgreSQL 기준으로 TEMP coverage 진단과 dryrun insert simulation을 진행했다. persistent DB apply는 하지 않았다.
+
+### CSV source
+
+- File: `exports/selfpia_image_url.csv`
+- Original file name: `셀피아코드-이미지url-자사코드.csv`
+- Columns: `p_code`, `image_url`, `updated_at`, `own_code`
+- Key policy: `p_code`를 `product_code.code_alias(code_system='selfpia_sku', code_value=p_code)`에 연결한다. `own_code`는 blank/duplicate가 많아 primary key로 쓰지 않는다.
+
+### Coverage result
+
+- CSV rows: 32,094
+- distinct `p_code`: 32,094
+- duplicated `p_code`: 0
+- blank `image_url`: 12,762
+- blank `own_code`: 5,080
+- matched distinct `p_code`: 32,062
+- unmatched distinct `p_code`: 32
+- rows with image and matched SKU: 19,331
+- rows with image but unmatched SKU: 1
+- blank image but matched SKU: 12,731
+- SKUs with image rows: 19,331
+- SKUs with multiple image rows: 0
+- image URLs reused by multiple SKUs: 0
+
+### SQL files
+
+- `sql/precheck_product_image_csv_coverage.sql`: TEMP table + `\copy` coverage check.
+- `sql/schema_local_patch_product_image.sql`: local-only table DDL draft. Not applied.
+- `sql/stage_product_image_import.sql`: TEMP stage check.
+- `sql/dryrun_product_image_import.sql`: TEMP target insert simulation with `BEGIN ... ROLLBACK`.
+- `sql/postcheck_product_image_import.sql`: post-apply read-only check. Safe before apply.
+
+### Dryrun result
+
+- CSV rows: 32,094
+- rows with image URL: 19,332
+- blank image URL rows: 12,762
+- ready insert rows: 19,331
+- image orphan rows: 1
+- simulated insert rows: 19,331
+- duplicate primary image SKUs: 0
+- reused image URL count: 0
+- requested sample:
+  - `1000-1`: image URL present.
+  - `1258-1`: image URL present.
+  - `11258-1`: no image URL in CSV.
+  - `LOCAL_TEST_PM_1258-1`: no image URL in CSV.
+- no=99 `OVERALL`: `REVIEW` because `image_orphan_rows = 1`.
+- unmatched image sample: `8276-2`.
+
+### Current decision
+
+Do not apply yet. The dryrun is structurally good, but one image row has no matching `selfpia_sku` alias. User decision is needed:
+
+1. Skip unmatched image rows during apply, keeping `8276-2` out of `product_image`.
+2. Backfill/fix the missing master alias separately, then rerun coverage/dryrun.
+
+API image join should wait until local `product_code.product_image` is actually applied and populated.
+
+### User decision: skip 8276-2 and proceed to local apply file
+
+User approved treating `8276-2` as an expected skipped orphan image row. SQL was updated accordingly:
+
+- `sql/dryrun_product_image_import.sql` now reports no=70 `EXPECTED_SKIP_POLICY` and no=99 `OVERALL = PASS` when the only image orphan is `8276-2`.
+- `sql/apply_product_image_import.sql` was created as a user-executed local-only apply file. It inserts only matched rows and excludes orphan image rows.
+- `sql/postcheck_product_image_import.sql` now checks expected row count, skipped orphan source row, duplicate primary images, and sample image/null behavior.
+
+Re-run dryrun result:
+
+- ready insert rows: 19,331
+- image orphan rows: 1
+- skipped orphan image rows: 1 (`8276-2`)
+- duplicate primary image SKUs: 0
+- no=99 `OVERALL`: `PASS`
+
+Apply is not executed yet. To apply locally, run in this order after copying CSV/SQL into the PostgreSQL container:
+
+```powershell
+docker cp .\exports\selfpia_image_url.csv product_ops_test_postgres:/tmp/selfpia_image_url.csv
+docker cp .\sql\schema_local_patch_product_image.sql product_ops_test_postgres:/tmp/schema_local_patch_product_image.sql
+docker cp .\sql\apply_product_image_import.sql product_ops_test_postgres:/tmp/apply_product_image_import.sql
+docker cp .\sql\postcheck_product_image_import.sql product_ops_test_postgres:/tmp/postcheck_product_image_import.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/schema_local_patch_product_image.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/apply_product_image_import.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/postcheck_product_image_import.sql
+```
+
+API repository image join should be implemented only after this local apply/postcheck succeeds.
+
+## v1 image API join (2026-05-15)
+
+Local DB `product_code.product_image` apply/postcheck 성공 후 `/api/products/*` read-only 응답에 image URL 필드를 추가했다. DB/schema/data 변경은 이 단계에서 하지 않았다.
+
+### Local image apply result
+
+- `product_code.product_image`: created.
+- image rows: 19,331.
+- primary rows: 19,331.
+- duplicate primary image SKUs: 0.
+- skipped orphan image rows: 1.
+- skipped p_code: `8276-2`.
+- postcheck overall: PASS.
+
+### API change
+
+Changed file:
+
+- `server/src/modules/product-management/repository.js`
+
+Added fields:
+
+- `thumbnail_url`
+- `image_url`
+
+Affected repository functions:
+
+- `listSkus`
+- `getSkuById`
+- `findSkusByCode`
+- `searchProducts`
+
+Join strategy:
+
+```sql
+LEFT JOIN LATERAL (
+  SELECT
+    pi.thumbnail_url,
+    pi.image_url
+  FROM product_code.product_image pi
+  WHERE pi.sku_id = v.sku_id
+  ORDER BY pi.is_primary DESC, pi.sort_order ASC, pi.id ASC
+  LIMIT 1
+) img ON true
+```
+
+`findSkusByCode` uses the same lateral lookup with `pi.sku_id = sm.id`. This preserves one API row per SKU/result and returns null image fields when no image exists.
+
+### Verification
+
+API container was restarted to load repository changes:
+
+```powershell
+docker restart product_ops_api_local
+```
+
+Verified:
+
+- `GET /api/products/skus?search=1258-1&limit=5`
+  - `1258-1`: `thumbnail_url` / `image_url` present.
+  - `11258-1`: image fields null.
+- `GET /api/products/skus?search=1000-1&limit=5`
+  - `1000-1`: `thumbnail_url` / `image_url` present.
+- `GET /api/products/skus?search=11258-1&limit=5`
+  - image fields null.
+- `GET /api/products/skus/by-code/selfpia_sku/1258-1`
+  - image fields present.
+- `GET /api/products/search?q=1258-1&type=all&limit=5`
+  - image fields included in search results.
+- `GET /product-code/skus/1258-1`
+  - migration alias still works and includes image fields.
+- `npm.cmd run build`
+  - frontend build succeeded. React Router dependency `"use client"` warnings remain non-blocking.
+
+Frontend browser check:
+
+- `/products`, search `1258-1`: 4 cards, 1 image tag, 3 placeholders.
+- `/products`, search `1000-1`: 1 card, 1 image tag, 0 placeholders.
+- `/products`, search `11258-1`: 1 card, 0 image tags, 1 placeholder.
+
+Remaining note: in headless Chrome the remote Googleusercontent image did not complete pixel loading during the short check, but the API-provided URL was rendered into the `<img src>` and placeholder fallback behavior remained correct for null images.
