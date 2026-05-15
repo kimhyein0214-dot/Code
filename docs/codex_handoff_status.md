@@ -301,336 +301,175 @@
 - by-code API는 같은 SKU에 local selfpia alias가 여러 개 있어도 SKU당 1건으로 반환하도록 보정
 - 아직 frontend 실행 검증은 별도 테스트 단계로 남김
 
-## Frontend Smoke Test 상태 (2026-05-15)
 
-수행 환경: 격리된 Linux 샌드박스 (사용자 Windows Docker/브라우저 미접근).
+## v1 UI Polish (2026-05-15)
 
-샌드박스에서 `frontend/admin`을 `/tmp/feadmin`로 복제 후 코드 정합성 + 빌드 + dev server 응답까지 확인.
+상품관리 모듈 v1 frontend/admin 화면을 read-only 원칙 내에서 가독성과 read-only 명확성을 개선한다. DB / API / schema / route 표면은 변경하지 않는다.
 
-- `npm install` 성공: vite 6.4.2, react 19.2.6, react-dom 19.2.6, react-router-dom 7.15.1, @vitejs/plugin-react 4.7.0
-- `npx vite build` 성공: 43 modules transformed, bundle 241.73 kB / gzip 76.14 kB
-- `npx vite` dev server 기동 성공, `/`, `/src/main.jsx?import`, `/src/App.jsx?import`, `/src/pages/products/ProductListPage.jsx?import` 모두 HTTP 200
-- frontend의 API client → service.js/repository.js 응답 shape 정적 검증 통과
-  - `ProductListPage.search` 기본값 `LOCAL_TEST`는 service layer `%LOCAL_TEST%` wrap으로 LOCAL_TEST_PM_* 포함 → 변경 불요
-  - `AliasSearchPage` 기본 codeValue `LOCAL_TEST_PM_1258-1` seed에 직접 존재 → 변경 불요
-  - `ChangeRequestsPlaceholderPage`가 참조하는 `result.meta.message` 키는 service.js와 일치
-- `vite.config.js`는 부재하지만 Vite 6 기본 esbuild가 `.jsx` 자동 변환을 수행하므로 빌드/실행 OK. `@vitejs/plugin-react`는 등록되지 않아 React Refresh(HMR)는 비활성 — v1 read-only UI 범위에서 영향 없음.
+### 변경 파일
 
-수정한 파일: 없음 (코드 변경 없음, 문서만 갱신).
+코드:
 
-사용자 Windows 호스트에서 아직 미수행:
-
-- `docker ps`, `docker logs product_ops_api_local`
-- 브라우저 `http://localhost:5173/products` 등 4개 라우트 실제 렌더링
-- 사용자 호스트의 API 컨테이너로부터 실제 SKU 2건 렌더링 확인
-
-다음 작업자가 수행해야 할 검증 절차는 `docs/product_management_v1_runbook.md`의 "사용자 Windows 호스트 검증 절차" 섹션 참조.
-
-운영 DB / NAS / schema 변경: 없음.
-Local DB 변경: 없음 (seed 재적용 불요, 기존 LOCAL_TEST_PM seed 유지).
-
-## React Runtime ReferenceError 수정 (2026-05-15)
-
-브라우저 검증 중 `Uncaught ReferenceError: React is not defined at App.jsx:10` 발생.
-
-원인: Vite 6 기본 esbuild가 classic JSX transform(`React.createElement`)로 컴파일하지만 각 JSX 파일에 `React` import가 누락된 상태였음. `main.jsx`만 React를 import하고 있었음.
-
-수정 파일 (코드만, DB/API 변경 없음):
-
-- `frontend/admin/src/App.jsx`
-- `frontend/admin/src/components/Layout.jsx`
-- `frontend/admin/src/components/StatusBadge.jsx`
+- `frontend/admin/src/components/CopyButton.jsx` (신규)
+- `frontend/admin/src/components/StatusBadge.jsx` (CodeSystemBadge 신규 export 추가)
+- `frontend/admin/src/components/Layout.jsx` (사이드바 read-only 안내 + env-banner)
 - `frontend/admin/src/pages/products/ProductListPage.jsx`
 - `frontend/admin/src/pages/products/ProductDetailPage.jsx`
 - `frontend/admin/src/pages/products/AliasSearchPage.jsx`
 - `frontend/admin/src/pages/products/ChangeRequestsPlaceholderPage.jsx`
+- `frontend/admin/src/styles.css`
 
-각 파일 상단에 `import React from 'react';` 또는 기존 named import에 `React`를 추가하는 형태로 처리.
+문서:
 
-후속 권장 (v1 외 별도 작업): `frontend/admin/vite.config.js`에 `@vitejs/plugin-react`를 등록해 automatic JSX runtime + HMR을 활성화하면 각 파일의 React import 자체가 불필요해진다. 본 v1 read-only 검증에서는 미적용.
+- `docs/product_management_v1_runbook.md` (v1 UI Polish 섹션 추가)
+- `docs/codex_handoff_status.md` (본 섹션 추가)
 
-운영 DB / NAS / schema 변경: 없음.
+변경 없음:
 
-## Windows 호스트 실측 검증 완료 (2026-05-15)
+- `frontend/admin/src/App.jsx` (router 동일)
+- `frontend/admin/src/main.jsx`
+- `frontend/admin/src/api/client.js`
+- `server/`, DB / schema / seed
 
-사용자 Windows 호스트에서 상품관리 모듈 v1 전체 스택 검증 완료.
+### 화면별 변경 요약
 
-Docker / DB:
+- 공통 Layout — 사이드바 brand 부제 "v1 read-only", 사이드바 하단 안내, 메인 영역 상단 노란색 READ-ONLY env-banner
+- SKU 목록 — 기본 검색어 `LOCAL_TEST_PM`, 예시 chip 3개, 셀 ellipsis + CopyButton, 상품명/옵션 2줄 clamp, empty 안내 보강, hint
+- SKU 상세 — Header CopyButton, read-only banner, dl 코드값 CopyButton, alias/mapping 패널 헤더 건수, CodeSystemBadge, Primary pill, 운영 연결 패널 안내 추가
+- Alias 검색 — code system select 한글 label, 시스템별 예시 chip 4개, 결과 1건 초과 → "복수 후보 N건" warn notice (own_sku ambiguous 강조), 결과 1건 → ok notice, empty 시 3가지 원인 안내
+- Change Requests — readonly-banner-strong, "새 요청" 버튼 disabled 유지 (aria-disabled+title), v1 상태 패널 + v1 범위 밖 항목 패널
 
-- Docker Desktop Running
-- `product_ops_test_postgres` Running / healthy, host port `5433 → 5432`
-- `product_ops_api_local` Running, host port `8080`
-- Compose 명령: `docker compose -f docker-compose.local-test.yml -f docker-compose.api-local.yml up -d`
-
-API:
-
-- API 컨테이너 startup log: `Mounted routes: /health, /api/products, /product-code, /picking, /mapping`
-- `GET /health` 200, DB=`product_ops_test` / user=`product_ops_tester` 확인
-- `GET /api/products/skus?search=LOCAL_TEST_PM` 200
-- `GET /api/products/skus/by-code/selfpia_sku/LOCAL_TEST_PM_1258-1` 200
-- `GET /api/products/skus/by-code/own_sku/LOCAL_TEST_PM_OWN_AMBIG` 200, ambiguous 후보 2건
-
-Frontend:
-
-- `frontend/admin`에서 `npm.cmd install`, `npm.cmd run dev`로 dev server 기동 성공
-- `http://localhost:5173/products` SKU 목록 정상 렌더
-- `/products/:skuId` 상세 정상
-- `/products/aliases` 정상
-- `/products/change-requests` placeholder 표시, 새 요청 버튼 disabled, write 기능 부재 확인
-
-환경 이슈와 해결 (코드 문제 아님, runbook의 "PowerShell 운영 팁" 섹션 참조):
-
-- PowerShell 실행 정책으로 `npm install` 차단 → `npm.cmd install` 사용
-- PowerShell `curl`은 `Invoke-WebRequest` alias → `curl.exe` 사용
-- 초기 빈 화면 + `React is not defined` → 7개 JSX 파일에 `React` import 추가하여 해결
-
-DB 변경: 없음. Schema 변경: 없음. NAS 적용: 없음. Seed 재적용: 없음.
-
-v1 read-only 원칙 유지 확인:
+### read-only 원칙 재확인
 
 - master 직접 수정 UI 부재
-- change request write UI 부재 (placeholder + disabled)
-- 클라이언트가 DB에 직접 접속하지 않고 `/api/*`로만 호출
-- `/product-code/*` legacy 라우트 유지
+- change request write UI 부재 (버튼 disabled, body 는 안내만)
+- DB 직접 접속 없음 (api client 는 `/api/products/*` 만 호출)
+- 레거시 `/product-code/*` 라우트는 제거하지 않음
 
-## .gitignore 보강 (2026-05-15)
+### 검증 (격리된 Linux 샌드박스)
 
-기존에는 server 측 `node_modules`, `package-lock.json`만 무시했음. frontend 측이 누락되어 있어 다음을 추가:
+- esbuild bundle dry-run: 0 errors / 0 warnings
+- `vite build` 성공: bundle `index-CPcET2fT.js` 252,025 byte / css `index-C6hanVm3.css` 6,380 byte
+- `vite dev --port 5175` 기동 후 다음 11 URL 모두 HTTP 200
+  - `/`, `/src/main.jsx`, `/src/App.jsx`, `/src/styles.css`
+  - `/src/components/Layout.jsx`, `/src/components/StatusBadge.jsx`, `/src/components/CopyButton.jsx`
+  - `/src/pages/products/{ProductListPage,ProductDetailPage,AliasSearchPage,ChangeRequestsPlaceholderPage}.jsx`
 
-- `frontend/admin/node_modules/`
-- `frontend/admin/.env`
-- `frontend/admin/dist/`
+### 사용자 Windows 호스트에서 확인 필요
 
-## package-lock.json 정책 결정 (2026-05-15)
+- 실제 브라우저에서 4개 라우트 렌더 (`/products`, `/products/:skuId`, `/products/aliases`, `/products/change-requests`)
+- 사용자 호스트 `http://localhost:8080` API 컨테이너로부터 SKU 2건 / alias / ambiguous own_sku 2건 / change request placeholder 메시지 렌더
+- copy 버튼 동작 (clipboard 권한, fallback)
+- 좁은 폭에서 ellipsis 가 줄바꿈으로 전환되는지
 
-`package-lock.json`은 재현성 우선을 위해 npm 권장에 따라 commit 대상으로 전환 (server, frontend/admin 모두). 기존 `.gitignore`의 `server/package-lock.json` 라인 제거. `node_modules/`, `.env`, `dist/`는 계속 ignore 유지.
+### 본 turn 에서 하지 않은 것
 
-## 변경 파일 인벤토리 (2026-05-15 turn)
+- 운영 Supabase / NAS / 로컬 DB schema 변경
+- master / code_alias / channel mapping write
+- `/product-code/*` 라우트 제거
+- GitHub push / `git add`
+- 메이크샵·에이블리 코드매칭 (다른 세션에서 진행)
 
-코드 변경:
+## MakeShop dryrun 준비 (2026-05-15, Claude Opus 4.7)
 
-- `frontend/admin/src/App.jsx` — `import React from 'react';` 추가
-- `frontend/admin/src/components/Layout.jsx` — `import React from 'react';` 추가
-- `frontend/admin/src/components/StatusBadge.jsx` — `import React from 'react';` 추가
-- `frontend/admin/src/pages/products/ProductListPage.jsx` — `React` named import 추가
-- `frontend/admin/src/pages/products/ProductDetailPage.jsx` — `React` named import 추가
-- `frontend/admin/src/pages/products/AliasSearchPage.jsx` — `React` named import 추가
-- `frontend/admin/src/pages/products/ChangeRequestsPlaceholderPage.jsx` — `React` named import 추가
+### 결정 사항 (사용자 승인)
 
-설정 변경:
+- DDL 즉시 적용: **NO**
+- 기존 `sku_channel_mapping` 직접 apply 설계: **NO**
+- 최종 구조: `channel_product` / `channel_sku` / `channel_sku_review_draft` 3계층 기반 (이번 turn에는 미적용)
+- 이번 turn 범위: 원본 XML 추출 + CSV 검증 + SELECT-only dryrun SQL 초안까지
+- XML 파싱 위치: **외부 스크립트(Python stdlib)**. PostgreSQL `xmltable`/`xpath`로 102MB XML 직접 파싱 금지
+- 검증 범위 순서: sample100 → full 4923
 
-- `.gitignore` — frontend `node_modules`, `package-lock.json`, `.env`, `dist` 추가
+### 작성한 산출물
 
-문서 변경:
+| 파일 | 역할 |
+|---|---|
+| `scripts/extract_makeshop_minimal_csv.py` | SpreadsheetML 2003 XML → CSV. `ss:Index` 희소셀 처리, product-level 컬럼 forward-fill, sample100/full 두 출력. utf-8-sig 인코딩 기본. iterparse + root.clear()로 102MB 메모리 안정. stdlib only. |
+| `scripts/validate_makeshop_csv.py` | CSV 11개 지표 출력: row_count, product_uid distinct/blank, sto_id/sto_code blank, bracket hits + unique codes, sto_id 중복 키/행, (product_uid, sto_id) 중복 키/행. |
+| `sql/dryrun_makeshop_select_only.sql` | TEMP TABLE + `\copy` + 4 result set (SUMMARY / AUTO_CONFIRM / REVIEW_REQUIRED / CONFLICT). `BEGIN ... ROLLBACK` 래퍼, `product_ops_test` 가드, INSERT/UPDATE/DELETE/ALTER/CREATE(persistent) 일체 없음. |
 
-- `docs/product_management_v1_runbook.md` — Windows 호스트 실측 결과, PowerShell 운영 팁, 재현 절차 갱신
-- `docs/codex_handoff_status.md` — 본 섹션 포함 Windows 실측 반영
+### MakeShop XML 최소 추출 컬럼
 
-생성하지 않은 항목: `frontend/admin/vite.config.js` (자동 JSX runtime 전환은 별도 작업)
-DB / API 코드 변경: 없음.
+매칭키 후보: `product_uid`, `sto_id`, `sto_code`, `opt_value`
 
-## 다음 구현 후보 (사용자 결정 필요)
+raw/reference 보존만: `barcode`, `product_name`, `status`, `gid`, `ps_num`
 
-상품관리 v1이 로컬 검증 완료된 시점에서 다음 단계 후보를 정리한다. 모두 v1 read-only 원칙과 master 직접 수정 금지를 유지한다.
+own_sku 추출 우선순위:
 
-### 후보 A — 상품관리 v1 UI polish (read-only)
+1. `sto_code` 비어있지 않으면 → 그대로 own_sku 후보로 사용
+2. 비어있으면 → `opt_value`에서 `[ALPHA-NN-NN(_N)]` 정규식으로 추출
+3. 둘 다 실패 → review_required
 
-- 범위: 화면 가독성/사용성 개선만, 데이터/스키마/API 변경 없음
-- 작업:
-  - 테이블 가로 스크롤 컨테이너 보강 (긴 `virtual_sku_code`, `selfpia_sku_code` 대비)
-  - 긴 코드 셀에 ellipsis + copy-to-clipboard 버튼
-  - 상세 화면 alias / channel mapping 카드 가독성 (zebra row, sticky header)
-  - `/products` 기본 검색어를 `LOCAL_TEST_PM`으로 좁힐지 결정 (현재 `LOCAL_TEST`는 prior seed도 포함)
-  - empty / loading / error 상태 UX 보강
-- 리스크: 낮음. 코드는 frontend만, DB/API 변경 없음
-- 예상 작업량: 작음 (1 세션)
-- 적합한 시점: 지금 (검증 직후 폴리시 작업)
+forward-fill 대상 (product-level): `product_uid`, `product_name`, `status`, `barcode`, `gid`, `ps_num`
 
-### 후보 B — 채널상품관리 모듈 v1 스캐폴드 (read-only)
+forward-fill 미적용 (option-level): `sto_id`, `sto_code`, `opt_value`
 
-- 범위: `/api/channels/*` namespace 신설, 채널상품/채널SKU/채널-SKU 매핑 조회
-- 작업:
-  - 설계 문서 `docs/15_channel_management_v1_scope.md` 작성 (스마트스토어/에이블리/메이크샵/플레이오토 확장 가정)
-  - server 측 `server/src/modules/channel-management/` 추가 (routes/service/repository)
-  - 기존 `product_code.sku_channel_mapping` view 활용, raw 데이터 보존
-  - frontend `/channels`, `/channels/:channelCode` 라우트 추가
-  - change request 연동은 v1에서 placeholder만
-- 리스크: 중간. 모듈 경계 + 채널별 의미 통일 필요
-- 예상 작업량: 중간 (2-3 세션)
-- 적합한 시점: 상품관리 v1 폴리시 완료 후
+### 자동확정 기준 (auto_confirm)
 
-### 후보 C — 피킹 모듈 v1 read-only API 연결
+모두 만족 시:
 
-- 범위: 기존 `/picking/*` 라우트를 `/api/picking/*` 신규 namespace에서 read-only로 노출, 태블릿 UI는 별도 후속 작업
-- 작업:
-  - `/api/picking/order-items`, `/api/picking/unmatched` 등 read-only 라우트 추가 (legacy `/picking/*` 유지)
-  - product_code `sku_master`와의 join view 확인
-  - `9826-*` legacy unmatched 정책 유지, raw `p_code` 보존
-  - frontend는 상품관리 상세 페이지의 "운영 연결" 패널에 link만 유지 (실제 피킹 UI는 후속)
-- 리스크: 낮음~중간. DB schema 변경 없음, view 추가만 검토
-- 예상 작업량: 작음~중간 (1-2 세션)
-- 적합한 시점: 채널 모듈 또는 상품관리 폴리시 이후
+1. `product_uid`, `sto_id` null/blank 아님
+2. own_sku 후보 추출 성공 (sto_code 또는 bracket)
+3. own_sku 후보가 `code_alias(target_type='SKU', code_system='own_sku')`에서 **단일 SKU**로 매칭 (match_count = 1)
+4. 기존 `sku_channel_mapping(channel_code='makeshop', channel_sku_code=sto_id)` 부재
+5. 매칭 SKU의 `sku_master.status`가 inactive/deleted/archive 패턴이 아님
 
-### 후보 D — 통합 DB / NAS PostgreSQL 이전 설계 문서 보강
+### review 기준 (review_required) — review_reason enum
 
-- 범위: 문서만, 실제 DB 변경/이전 없음
-- 작업:
-  - `docs/10_database_schema_boundaries.md` 보강 (`integration`, `audit`, `cs`, `inspection`, `picking` schema 책임 매트릭스)
-  - NAS PostgreSQL 이전 전제 (백업, 복구, RPO/RTO) 문서화
-  - Docker API server 유지 기준의 schema 배치 다이어그램
-  - "대표님이 AI로 유지보수하기 쉬운 구조" 관점에서 코드/문서 구조 권장사항 정리
-- 리스크: 매우 낮음 (문서 작업)
-- 예상 작업량: 중간 (2 세션)
-- 적합한 시점: 코드 작업 중 휴식기 / 의사결정 정렬이 필요한 시점
+precedence: `null_key` > `pattern_unmatched` > `own_sku_missing` > `own_sku_not_in_alias` > `own_sku_ambiguous` > `channel_sku_conflict` > `sku_inactive`
 
-### 권장 순서
+| review_reason | 트리거 |
+|---|---|
+| null_key | `product_uid` 또는 `sto_id` null/blank |
+| pattern_unmatched | `sto_code` blank + `opt_value` 존재하나 bracket 정규식 실패 |
+| own_sku_missing | own_sku 후보 자체가 없음 (sto_code blank + opt_value blank/bracket 실패) |
+| own_sku_not_in_alias | 후보 있으나 `code_alias`에 매칭 없음 (match_count = 0) |
+| own_sku_ambiguous | 후보 1개가 SKU 2개 이상에 매칭 (match_count > 1) |
+| channel_sku_conflict | 기존 `sku_channel_mapping`에 (makeshop, sto_id) 존재 — sku 동일 여부 무관, 전부 review |
+| sku_inactive | 매칭 SKU의 status가 inactive/deleted/archive 패턴 |
 
-1. 후보 A (UI polish + 검색어 정리) — 검증 직후 빠르게 마감 (1 세션)
-2. 후보 C (피킹 read-only API) — 모듈 패턴 재사용성 검증 (1-2 세션)
-3. 후보 B (채널상품관리 스캐폴드) — 채널 의미 통일 설계 후 진입 (2-3 세션)
-4. 후보 D (DB 이전 문서) — 병행 가능, 실제 NAS 이전은 별도 승인 절차
-
-대규모 모듈 확장 전에 A로 마감 정돈을 한 번 거쳐 v1 패턴(read-only, change request placeholder)을 다른 모듈에서도 그대로 재사용할 수 있게 한다.
-
-## Channel Mapping Precheck — MakeShop / Ably (2026-05-15)
-
-- 작업명: channel mapping precheck for makeshop / ably
-- 실행 주체: Claude Opus 4.7 (Cowork 세션)
-- 이번 턴 범위: SELECT-only SQL 작성 + 메이크샵 원본 XML 구조 파악 + handoff 갱신
-- DB 변경: 없음 (SELECT-only SQL 만 작성. dryrun/apply 미작성)
-- 운영 Supabase / NAS / schema: 변경 없음
-- 대상 DB: 로컬 Docker `product_ops_test_postgres` / `product_ops_test`
-
-### 생성/수정 파일
-
-- 신규 `sql/inventory_channel_mapping_precheck.sql` — product_code schema 의 channel 관련 테이블/컬럼 존재 여부, code_alias/channel_*/sku_channel_mapping 의 채널 분포, selfpia_sku/own_sku 매칭 풀 분포, makeshop/ably/메이크샵/에이블리 변형 검색을 한 번에 점검하는 SELECT-only inventory
-- 신규 `sql/precheck_makeshop_channel_mapping.sql` — 메이크샵 전용 SELECT-only precheck. 기존 makeshop 데이터 존재 여부, 매칭 후보 키 컬럼 존재 여부, own_sku 모호성 분포, 매칭 가설 출력
-- 수정 `docs/codex_handoff_status.md` — 본 섹션 추가
-
-### MakeShop XML 구조 파싱 결과
-
-원본 파일: `메이크샵_ALL_변경양식.xml` (102 MB, UTF-8, MS Office 2003 XML Spreadsheet)
-
-- Workbook 시트: 1개 (`Sheet1`)
-- 컬럼 수: 136
-- 헤더 구성: row 1 = 한글 설명, row 2 = 영문 필드명, row 3 이후 = 데이터
-- 데이터 행 수: 30,587
-- 행 형식: 한 상품이 여러 row 에 걸친다. **product 레벨 컬럼(`product_uid`, `barcode`, `product_name` 등)은 상품의 첫 행에만 채워지고, 이후 옵션 row 들은 옵션 셀만 채운다.** 적재 시 forward-fill 필요.
-- 셀 형식: `<Cell ss:Index="N">` 으로 sparse 가능. 파서는 ss:Index 를 반드시 처리해야 한다.
-
-#### 핵심 컬럼
-
-| col | 영문 | 한글 | 의미 / 본 분석에서의 역할 |
-|---:|---|---|---|
-| 5 | `product_uid` | 상품 고유번호 | **MakeShop 내부 product id**. 4,923 distinct (=4,923 makeshop 상품). 매칭 후보 키. |
-| 11 | `gid` | 스타일코드 | 39 rows 만 채워짐 — 매칭 부적합. |
-| 13 | `product_name` | 상품명 | 참조용. |
-| 21 | `opt_value` | 옵션값 | **bracket 안에 own_sku-like 코드** 다수 포함. 31,730 rows 에 bracket 매칭. |
-| 30 | `opt_values` | 옵션 조합 값 | opt_value 와 보완 관계. |
-| 40 | `sto_code` | 관리코드 | **0 rows** — 본 데이터에서 비어있음. selfpia/own 직접 매칭 불가. |
-| 41 | `sto_note` | 옵션비고 | 참조용. |
-| 44 | `sto_id` | 옵션 번호 | **MakeShop 옵션 id**. 28,298 rows. (product_uid, sto_id) 쌍 4,898 distinct(=옵션 단위 키 후보). |
-| 86 | `supply_product_name` | 도매 사입 상품명 | 0 rows. |
-| 126 | `ps_num` | 상품제품코드 | 0 rows — 사용 불가. |
-| 132 | `barcode` | 상품 바코드 | 4,923 rows — 상품 1건당 1개. |
-
-#### bracket 패턴 (own_sku 후보)
-
-`opt_value` / `opt_values` 안에 `[ALPHA-DIGITS-DIGITS]` 또는 `[ALPHA-DIGITS-DIGITS_DIGIT]` 형식 bracket 이 다수. 샘플:
-
-`PE-25-21`, `NA-3-10_3`, `NA-3-10_4`, `PI-7-01` ~ `PI-7-07`, `EF-7-09_2` ~ `EF-7-10_5`, `GPA-1-02_5` ~ `GPA-2-04_5`, `SA-3-03_4`, `SA-3-06_5` …
-
-이 패턴은 Product_code DB inventory 의 `own_sku` 형식(`B-1-01`, `CA-3-03_3`, `PI-3-01`)과 일치 → 메이크샵 옵션의 **internal SKU 매칭 1차 후보는 bracket 추출 own_sku** 다. 단, code_alias inventory 에서 own_sku 는 31,975 rows / 18,533 distinct(n:m) 였으므로 **bracket 매칭은 자동 확정 불가**, ambiguous 후보는 검수 분리 필요.
-
-#### 매칭 후보 키 가설 (precheck 결과로 확정 필요)
-
-| no | source | target 후보 | 비고 |
-|---:|---|---|---|
-| 1 | `product_uid` | `sku_channel_mapping.seller_product_code` (channel_code=`makeshop`) 또는 `channel_product.seller_product_code_raw` | MakeShop 상품 id |
-| 2 | `sto_id` | `sku_channel_mapping.channel_sku_code` 또는 `channel_sku.channel_sku_code_raw` | MakeShop 옵션 id |
-| 3 | `sto_code` | `code_alias(own_sku)` | **본 데이터에서 빈값** — 사용 불가 |
-| 4 | bracket(`opt_value`) | `code_alias(own_sku)` → `sku_master.id` | own_sku 는 n:m → ambiguous 발생 가능 |
-| 5 | `barcode` | 보조 키 / 보강용 | selfpia 측 매칭 풀 존재 여부는 precheck 결과로 확인 |
-| 6 | `gid`, `ps_num` | 보류 | rows 부족으로 매칭 부적합 |
-
-#### 파싱 방식 제안 (다음 턴에 staging 설계 시 참고. 이번 턴에는 생성/적재 금지)
-
-- Python `xml.etree.ElementTree.iterparse` 로 row 단위 스트리밍 파싱
-- `Cell.ss:Index` 반드시 처리
-- product 레벨 컬럼은 forward-fill (마지막 비어있지 않은 product_uid 를 옵션 row 들이 상속)
-- bracket 추출 regex: `\[([A-Z]+-\d+-\d+(?:_\d+)?)\]`
-- 한 row 의 `opt_value` 가 콤마로 분리된 멀티옵션 텍스트(`싱글/크리스탈[PI-7-01],싱글/블랙[PI-7-02]`) 가능 → split 후 옵션 단위로 재구성
-- 적재는 staging table 에만, 본 schema 직접 INSERT/UPDATE 금지. **본 턴에서는 어떤 적재/생성 SQL 도 작성하지 않는다.**
-
-### 에이블리 메모 (이번 턴 미확정)
-
-`에이블리 ALL.csv` (3.5 MB, 9,158 데이터 행) 헤더:
-
-`상품 번호, 판매자 상품코드, 상품명, 브랜드, 에이블리 판매가, 에이블리 할인 판매가, 에이블리 최종 판매가(앱), 4910 판매가, 4910 할인 판매가, 4910 현재 판매가, 옵션 번호, 솔루션사 고유코드, 옵션1, 옵션2, 전체 옵션명, 재고수량, 안전재고, 재고 소진시 판매 방식, 품절상태, 진열상태, 카테고리, 상품등록일, 배송 타입, 택배사, 반품 배송비(편도), 도서산간추가배송비(편도), 성별, 병행수입 여부, 주문제작 여부`
-
-미확정 후보 (전부 열어둠. 에이블리 전용 precheck 작성 시 확정):
-
-- `솔루션사 고유코드` = selfpia_sku 후보
-- `솔루션사 고유코드` = own_sku 후보
-- `솔루션사 고유코드` = channel-side raw code 후보
-- `전체 옵션명` 안의 `[EE-8-04_4]` 같은 bracket 값 = own_sku 후보
-- `옵션 번호` = ably_option_code 후보 (예: `183276147`)
-- `상품 번호` = ably_product_code 후보 (예: `2420824`)
-- `판매자 상품코드` = 4910/selfpia product code 후보 (예: `9070`, `9135`)
-
-이번 턴에서는 ably 전용 precheck SQL 을 만들지 않는다. 메이크샵 결과 회신 후 별도 턴에서 작성한다.
-
-### 사용자가 다음에 실행할 명령
+### 사용자 실행 절차 (sample100 dryrun)
 
 ```powershell
-# 컨테이너 기동 확인
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+# 1. XML → CSV 추출 (workspace 루트에서)
+python scripts\extract_makeshop_minimal_csv.py `
+  --input-xml "data\메이크샵_ALL_변경양식.xml" `
+  --output-full outputs\makeshop_minimal_full.csv `
+  --output-sample outputs\makeshop_minimal_sample100.csv `
+  --sample-rows 100
 
-# 필요 시 기동
-docker compose -f docker-compose.local-test.yml -f docker-compose.api-local.yml up -d
+# 2. CSV 구조 검증
+python scripts\validate_makeshop_csv.py outputs\makeshop_minimal_sample100.csv
 
-# (방법 A) 컨테이너 안에서 실행
-docker exec -i product_ops_test_postgres `
-  psql -U product_ops_tester -d product_ops_test `
-  < sql/inventory_channel_mapping_precheck.sql
-
-docker exec -i product_ops_test_postgres `
-  psql -U product_ops_tester -d product_ops_test `
-  < sql/precheck_makeshop_channel_mapping.sql
-
-# (방법 B) host 의 psql 사용
+# 3. dryrun SQL 실행 (sample100, default)
+$env:PGPASSWORD = '<password>'
 psql -h localhost -p 5433 -U product_ops_tester -d product_ops_test `
-  -f sql/inventory_channel_mapping_precheck.sql
+     -v ON_ERROR_STOP=1 `
+     -f sql\dryrun_makeshop_select_only.sql
 
+# 4. (sample 검증 OK 후) full 4923 dryrun
 psql -h localhost -p 5433 -U product_ops_tester -d product_ops_test `
-  -f sql/precheck_makeshop_channel_mapping.sql
+     -v ON_ERROR_STOP=1 `
+     -v CSV_PATH="'outputs/makeshop_minimal_full.csv'" `
+     -f sql\dryrun_makeshop_select_only.sql
 ```
 
-### 사용자가 회신해야 할 결과
+XML 파일 경로(`data\메이크샵_ALL_변경양식.xml`)는 사용자 환경에 맞게 조정 필요. 스크립트는 경로를 인자로 받습니다.
 
-다음 세 가지를 그대로 회신해주면 다음 턴에서 메이크샵 staging 설계와 dry-run SQL 을 확정할 수 있다.
+### 다음 단계
 
-1. `inventory_channel_mapping_precheck.sql` 의 전체 출력 (각 `\echo` 헤더 포함)
-2. `precheck_makeshop_channel_mapping.sql` 의 전체 출력 (각 `\echo` 헤더 포함). 일부 SELECT 는 테이블/컬럼 부재로 ERROR 가 날 수 있으며 ERROR 메시지도 그대로 회신
-3. 본 문서 "MakeShop XML 구조 파싱 결과" 의 컬럼 해석이 실 운영 의미와 일치하는지 확인 (특히 `sto_id`=옵션 번호, `sto_code`=관리코드, `opt_value bracket`=own_sku)
+1. 사용자 호스트에서 sample100 추출/검증/dryrun 실행
+2. SUMMARY / AUTO_CONFIRM / REVIEW_REQUIRED / CONFLICT 결과 4종 첨부 → Claude가 분포 분석
+3. own_sku 추출 성공률, ambiguous 비율, channel_sku_conflict 발생 여부에 따라 다음 결정:
+   - 분류 기준 보강 (예: 새 review_reason 추가)
+   - bracket 정규식 변형 필요 여부
+   - DDL 적용 (channel_product/channel_sku/channel_sku_review_draft) 시점
+4. sample 결과 안정되면 full 4923으로 확장
+5. full 결과에서 자동확정 비율 충분하면 별도 turn에서 apply SQL 설계 (그 단계도 사용자 명시 승인 필요)
 
-### 다음 턴 예정 작업
+### 본 turn 변경 없음
 
-- precheck 결과 기반으로 메이크샵 staging 구조 확정 (channel 명 `makeshop` 사용 여부, sku_channel_mapping vs code_alias 어느 쪽으로 적재할지, channel_product/channel_sku 테이블 부재 시 대안)
-- 메이크샵 dryrun SQL 작성 (`sql/dryrun_makeshop_channel_mapping.sql`)
-  - BEGIN/ROLLBACK 트랜잭션, no=1..N + no=99 OVERALL verdict
-  - bracket 매칭 ambiguous 후보 / 자동 확정 후보 / 미매칭 분리
-- 사용자 dryrun 결과 회신 → 명시적 승인 후에만 apply SQL 작성
-- 이후 에이블리 전용 precheck → dryrun → 승인 → apply 순서 진행
-- 두 채널은 같은 SQL 에 섞지 않음
-
-### 절대 하지 않은 것 / 하지 않을 것 (재확인)
-
-- 운영 Supabase 변경 (없음)
-- NAS PostgreSQL 변경 (없음)
-- 로컬 DB schema 변경 (없음)
-- INSERT/UPDATE/DELETE/ALTER/DROP/CREATE/TRUNCATE/COPY (한 줄도 없음)
-- dryrun/apply SQL 작성 (이번 턴 미작성)
-- master 테이블 직접 수정 (없음)
-- ambiguous 후보 자동 확정 (적용 단계 자체가 없음)
-
+- 운영 DB / NAS / Schema / Seed / API / Frontend 동작 코드: 모두 변경 없음
+- `product_ops_test` DB: 본 turn에는 접근 없음 (SQL은 사용자가 직접 실행)
+- DDL: 미적용 (3개 신규 테이블은 향후 별도 승인 단계)
