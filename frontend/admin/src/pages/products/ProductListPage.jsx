@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 
 import { productsApi } from '../../api/client.js';
-import { StatusBadge } from '../../components/StatusBadge.jsx';
-import { CopyButton } from '../../components/CopyButton.jsx';
+import { ProductCardRow } from '../../components/ProductCardRow.jsx';
 
-const DEFAULT_SEARCH = 'LOCAL_TEST_PM';
-const SEARCH_EXAMPLES = ['LOCAL_TEST_PM', 'LOCAL_TEST_PM_1258-1', 'LOCAL_TEST_PM_OWN_AMBIG'];
+const DEFAULT_SEARCH = '1258-1';
+const SEARCH_EXAMPLES = ['1258-1', '실버 기본 바', '피어싱', 'LOCAL_TEST_PM'];
 
 export function ProductListPage() {
   const [search, setSearch] = useState(DEFAULT_SEARCH);
@@ -34,7 +32,7 @@ export function ProductListPage() {
 
   useEffect(() => {
     load(DEFAULT_SEARCH);
-    // 최초 1회만. 후속 검색은 form submit / 예시 chip 으로 트리거.
+    // 최초 1회만 기본 검색을 실행한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -48,15 +46,15 @@ export function ProductListPage() {
       <div className="page-header">
         <div>
           <h1>SKU 목록</h1>
-          <p>Product_code master 기준 read-only 조회 · 최대 50건</p>
+          <p>상품코드 master 기준 read-only 조회 · 최대 50건</p>
         </div>
-        <button className="button disabled" disabled title="v1 read-only. master 변경 기능 비활성">
+        <button className="button disabled" disabled title="v1 read-only. master 변경 기능은 비활성화 상태입니다.">
           Change Request
         </button>
       </div>
 
       <form
-        className="toolbar"
+        className="toolbar product-search-toolbar"
         onSubmit={(event) => {
           event.preventDefault();
           load();
@@ -65,11 +63,11 @@ export function ProductListPage() {
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="상품명 / Selfpia SKU / Own SKU / Virtual SKU 부분 일치"
+          placeholder="상품명 / Selfpia SKU / Virtual SKU 부분 일치"
           aria-label="SKU 검색"
         />
         <button className="button" type="submit" disabled={loading}>
-          {loading ? '조회 중…' : '검색'}
+          {loading ? '조회 중...' : '검색'}
         </button>
       </form>
 
@@ -88,55 +86,26 @@ export function ProductListPage() {
       </div>
 
       {error && <div className="notice error">조회 실패: {error}</div>}
-      {loading && !error && <div className="notice">조회 중…</div>}
+      {loading && !error && <div className="notice">상품을 조회하는 중입니다.</div>}
 
-      <div className="table-wrap">
-        <table className="sticky">
-          <thead>
-            <tr>
-              <th style={{ minWidth: 200 }}>Selfpia SKU</th>
-              <th>상품명</th>
-              <th>옵션</th>
-              <th style={{ minWidth: 200 }}>Virtual SKU</th>
-              <th style={{ width: 110 }}>상태</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.sku_id}>
-                <td>
-                  <div className="cell-code">
-                    <Link to={`/products/${row.sku_id}`} className="mono ellipsis" title={row.selfpia_sku_code}>
-                      {row.selfpia_sku_code}
-                    </Link>
-                    <CopyButton value={row.selfpia_sku_code} />
-                  </div>
-                </td>
-                <td className="ellipsis-2" title={row.product_name}>{row.product_name}</td>
-                <td className="ellipsis-2" title={row.option_value}>{row.option_value}</td>
-                <td>
-                  <div className="cell-code">
-                    <span className="mono ellipsis" title={row.virtual_sku_code}>{row.virtual_sku_code}</span>
-                    <CopyButton value={row.virtual_sku_code} />
-                  </div>
-                </td>
-                <td><StatusBadge value={row.sku_status} /></td>
-              </tr>
-            ))}
-            {!loading && rows.length === 0 && (
-              <tr>
-                <td colSpan="5" className="empty">
-                  검색어 <code>{lastQuery || search}</code> 로 조회된 SKU 가 없습니다.
-                  검색 예시 버튼을 눌러보거나 검색어를 줄여보세요.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="product-card-list" aria-busy={loading}>
+        {!loading && rows.map((row) => (
+          <ProductCardRow key={row.sku_id} product={row} />
+        ))}
+        {!loading && rows.length === 0 && (
+          <div className="empty-state">
+            <strong>검색 결과가 없습니다.</strong>
+            <p>
+              <code>{lastQuery || search}</code> 조건으로 조회된 SKU가 없습니다.
+              예시 검색어를 누르거나 검색어를 줄여보세요.
+            </p>
+          </div>
+        )}
       </div>
 
       <p className="hint">
-        결과는 <code>/api/products/skus?search=…&amp;limit=50</code> 응답입니다. 상태 컬럼은 sku_master.status 원본을 그대로 보여줍니다.
+        목록은 <code>/api/products/skus?search=...&amp;limit=50</code> 응답을 그대로 사용합니다.
+        현재 단계에서는 이미지 URL을 요청하지 않으므로 모든 상품에 이미지 슬롯 placeholder가 표시됩니다.
       </p>
     </section>
   );

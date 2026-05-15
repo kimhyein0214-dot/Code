@@ -473,3 +473,168 @@ XML 파일 경로(`data\메이크샵_ALL_변경양식.xml`)는 사용자 환경�
 - 운영 DB / NAS / Schema / Seed / API / Frontend 동작 코드: 모두 변경 없음
 - `product_ops_test` DB: 본 turn에는 접근 없음 (SQL은 사용자가 직접 실행)
 - DDL: 미적용 (3개 신규 테이블은 향후 별도 승인 단계)
+
+## MakeShop full dryrun complete / next diagnostics (2026-05-15)
+
+### full dryrun 결과
+
+입력 CSV:
+
+- `outputs/makeshop_minimal_full.csv`
+- row 기준: full dryrun 출력 `30,586` rows
+
+dryrun SQL:
+
+- `sql/dryrun_makeshop_select_only.sql`
+- TEMP TABLE + `\copy` + `BEGIN ... ROLLBACK`
+- `channel_sku_code = product_uid || '-' || sto_id` composite 방식
+- `product_ops_test` guard 포함
+- DB 영구 변경 없음
+
+SUMMARY:
+
+| 항목 | 값 |
+|---|---:|
+| total_rows | 30,586 |
+| auto_confirm | 11,089 |
+| review_required | 19,497 |
+| r_null_key | 2,288 |
+| r_pattern_unmatched | 1,354 |
+| r_own_sku_missing | 0 |
+| r_own_sku_not_in_alias | 489 |
+| r_own_sku_ambiguous | 15,366 |
+| r_channel_sku_conflict | 0 |
+| r_sku_inactive | 0 |
+
+SUMMARY by extraction_method:
+
+| extraction_method | rows | auto_confirm | review_required |
+|---|---:|---:|---:|
+| `(none)` | 3,613 | 0 | 3,613 |
+| `opt_value_bracket` | 4,792 | 2,392 | 2,400 |
+| `opt_values_bracket` | 22,181 | 8,697 | 13,484 |
+
+CONFLICT:
+
+- `0` rows
+- composite `channel_sku_code` 기준 기존 `sku_channel_mapping` 충돌은 full dryrun 기준 없음
+
+### 현재 판단
+
+- MakeShop pipeline 자체는 정상으로 판단
+- `product_uid || '-' || sto_id` composite key는 기존 channel mapping과 conflict 0
+- `auto_confirm` 11,089건은 apply 후보일 수 있으나, apply 전에 `own_sku` alias 적재 상태/품질 검증 필요
+- 가장 큰 review 원인은 `own_sku_ambiguous` 15,366건
+- `own_sku_not_in_alias` 489건은 alias 누락 후보로 별도 전수 export 필요
+- `null_key` 2,288건은 대부분 `sto_id` blank인 product-level/meta row 후보
+- `pattern_unmatched` 1,354건은 샘플 확인 후 정규식 보강 여부 판단
+
+### 이번 진단 SQL 산출물
+
+| 파일 | 목적 |
+|---|---|
+| `sql/check_local_own_sku_coverage.sql` | `product_code.code_alias`의 `code_system='own_sku'` 적재 상태, target 분포, ambiguous bucket, MakeShop 후보와 alias 교집합 확인 |
+| `sql/diagnose_makeshop_composite_uniqueness.sql` | full CSV 내부에서 `product_uid || '-' || sto_id` composite key unique 여부 최종 확인 |
+| `sql/diagnose_makeshop_ambiguous_own_sku.sql` | `own_sku_ambiguous` 원인 분석: own_sku별 발생 row, candidate SKU 수, extraction method 분포, 반복 패턴 |
+| `sql/export_makeshop_review_samples.sql` | review reason별 CSV export: null_key/pattern_unmatched sample, own_sku_not_in_alias full, own_sku_ambiguous sample |
+| `sql/export_makeshop_auto_confirm_candidates.sql` | apply가 아닌 auto_confirm 후보 CSV export |
+
+### 금지 상태 유지
+
+- 운영 Supabase 접근/변경 금지
+- 운영 DB / 로컬 DB 영구 변경 금지
+- apply SQL 작성 금지
+- `sku_channel_mapping` 실제 INSERT 금지
+- `channel_product` / `channel_sku` / `channel_sku_review_draft` DDL 생성/적용 금지
+- API / Frontend 동작 코드 변경 금지
+- 이번 진단은 SELECT, TEMP TABLE, `\copy`, `BEGIN`, `ROLLBACK` 범위만 사용
+
+### 사용자 실행 명령
+
+공통 사전 복사:
+
+```powershell
+docker cp .\outputs\makeshop_minimal_full.csv product_ops_test_postgres:/tmp/makeshop_minimal_full.csv
+```
+
+진단 SQL 실행 패턴:
+
+```powershell
+docker cp .\sql\check_local_own_sku_coverage.sql product_ops_test_postgres:/tmp/check_local_own_sku_coverage.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/check_local_own_sku_coverage.sql 2>&1 |
+  Tee-Object -FilePath .\outputs\check_local_own_sku_coverage_result.txt
+```
+
+나머지 파일도 같은 방식으로 실행:
+
+- `sql/diagnose_makeshop_composite_uniqueness.sql` → `outputs/diagnose_makeshop_composite_uniqueness_result.txt`
+- `sql/diagnose_makeshop_ambiguous_own_sku.sql` → `outputs/diagnose_makeshop_ambiguous_own_sku_result.txt`
+- `sql/export_makeshop_review_samples.sql` → `outputs/export_makeshop_review_samples_result.txt`
+- `sql/export_makeshop_auto_confirm_candidates.sql` → `outputs/export_makeshop_auto_confirm_candidates_result.txt`
+
+export SQL 실행 후 컨테이너 `/tmp` CSV 회수:
+
+```powershell
+docker cp product_ops_test_postgres:/tmp/makeshop_review_null_key_sample.csv .\outputs\makeshop_review_null_key_sample.csv
+docker cp product_ops_test_postgres:/tmp/makeshop_review_pattern_unmatched_sample.csv .\outputs\makeshop_review_pattern_unmatched_sample.csv
+docker cp product_ops_test_postgres:/tmp/makeshop_review_own_sku_not_in_alias_full.csv .\outputs\makeshop_review_own_sku_not_in_alias_full.csv
+docker cp product_ops_test_postgres:/tmp/makeshop_review_own_sku_ambiguous_sample.csv .\outputs\makeshop_review_own_sku_ambiguous_sample.csv
+docker cp product_ops_test_postgres:/tmp/makeshop_auto_confirm_candidates.csv .\outputs\makeshop_auto_confirm_candidates.csv
+```
+
+PowerShell에서는 `< file.sql` 리다이렉션을 쓰지 않고, `docker cp` + `docker exec ... psql -f` 방식을 사용한다.
+
+### 다음 판단 기준
+
+1. `own_sku` coverage가 충분한지: `code_alias(code_system='own_sku')`에서 unique_1 비중이 높고 MakeShop 후보의 unique alias match가 충분한지 확인
+2. composite key가 batch 내부 unique인지: duplicate channel_sku_code keys/rows가 0이면 `product_uid || '-' || sto_id` 유지 가능
+3. ambiguous 축소 기준: ambiguous top 100, opt_values fallback 반복 패턴, 같은 product_uid 내 반복 own_sku를 보고 정규식/후보 우선순위/수동 리뷰 기준 결정
+4. auto_confirm export로 넘어갈지: coverage, uniqueness, ambiguous 원인이 납득 가능하고 `auto_confirm` 후보 CSV 표본이 정상일 때만 다음 단계 검토
+
+## Product Management v1 UI Polish round 2 (2026-05-15)
+
+frontend/admin 상품관리 v1 화면을 card/list preview UI로 개선했다. 이번 작업은 이미지 연결 전 placeholder 단계이며 read-only 원칙을 유지했다.
+
+수정/작성 파일:
+
+- `frontend/admin/src/components/EmptyImagePlaceholder.jsx`
+- `frontend/admin/src/components/ProductThumbnail.jsx`
+- `frontend/admin/src/components/ProductMetaChips.jsx`
+- `frontend/admin/src/components/ProductCardRow.jsx`
+- `frontend/admin/src/pages/products/ProductListPage.jsx`
+- `frontend/admin/src/pages/products/ProductDetailPage.jsx`
+- `frontend/admin/src/pages/products/AliasSearchPage.jsx`
+- `frontend/admin/src/styles.css`
+- `docs/product_management_v1_runbook.md`
+- `docs/codex_handoff_status.md`
+
+화면 변경:
+
+- SKU 목록: 기존 테이블을 96px 이미지 슬롯이 있는 카드형 리스트로 전환. Selfpia SKU / Virtual SKU chip과 status badge, copy button 유지.
+- SKU 상세: 상단 preview 헤더에 큰 이미지 placeholder, 상품명, 옵션, meta chip, status badge 추가. alias / channel mapping 패널 유지.
+- Alias 검색: 결과 리스트에 64px placeholder 썸네일 추가. ambiguous notice, code system badge, copy button 유지.
+- Change Requests: 코드 변경 없음. disabled/read-only 상태 유지.
+
+이미지 placeholder:
+
+- `ProductThumbnail`은 `src`가 없거나 `img onError` 발생 시 `EmptyImagePlaceholder`를 렌더한다.
+- 현재 API에 `thumbnail_url` / `image_url` 필드가 없으므로 placeholder만 표시된다.
+- 추후 API 응답에 이미지 URL이 추가되면 컴포넌트 props 그대로 연결 가능하다.
+
+검증:
+
+- `npm.cmd run build` 성공.
+- Vite build: 48 modules transformed, css `9.95 kB`, js `254.40 kB`.
+- React Router dependency의 `"use client"` ignored 경고 2건은 빌드 성공 상태에서 발생하는 dependency warning으로 남음.
+
+다음 단계:
+
+- 운영 Supabase에 있는 `product_image` 데이터를 local DB로 export/import할지 결정 필요.
+- DB schema에 `product_code.product_image` 또는 equivalent image table/view를 추가하는 patch 필요 여부 결정.
+- API list/detail/by-code 응답에 `thumbnail_url` 또는 `image_url` 추가 필요.
+- 실제 이미지 연결은 별도 승인 후 진행.

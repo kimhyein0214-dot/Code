@@ -4,6 +4,8 @@ import { Link, useParams } from 'react-router-dom';
 import { productsApi } from '../../api/client.js';
 import { CodeSystemBadge, StatusBadge } from '../../components/StatusBadge.jsx';
 import { CopyButton } from '../../components/CopyButton.jsx';
+import { ProductMetaChips } from '../../components/ProductMetaChips.jsx';
+import { ProductThumbnail } from '../../components/ProductThumbnail.jsx';
 
 export function ProductDetailPage() {
   const { skuId } = useParams();
@@ -47,7 +49,7 @@ export function ProductDetailPage() {
     return (
       <section className="page">
         <Link className="back-link" to="/products">← SKU 목록</Link>
-        <div className="notice">조회 중…</div>
+        <div className="notice">상품 상세를 조회하는 중입니다.</div>
       </section>
     );
   }
@@ -60,20 +62,43 @@ export function ProductDetailPage() {
       <div className="page-header">
         <div>
           <Link className="back-link" to="/products">← SKU 목록</Link>
-          <div className="cell-code">
-            <h1 className="mono">{sku.selfpia_sku_code}</h1>
-            <CopyButton value={sku.selfpia_sku_code} />
-          </div>
-          <p className="ellipsis-2" title={sku.product_name}>{sku.product_name}</p>
+          <h1>SKU 상세</h1>
+          <p>상품 이미지 슬롯과 코드 정보를 함께 확인하는 read-only preview입니다.</p>
         </div>
-        <button className="button disabled" disabled title="v1 read-only. master 변경 기능 비활성">
+        <button className="button disabled" disabled title="v1 read-only. master 변경 기능은 비활성화 상태입니다.">
           Change Request
         </button>
       </div>
 
       <div className="readonly-banner" role="note">
-        본 상세 화면은 read-only 입니다. master/alias/channel mapping 의 추가/수정/삭제 UI 는 v1 범위 밖입니다.
+        이 상세 화면은 read-only입니다. master, alias, channel mapping 추가/수정/삭제 UI는 v1 범위 밖입니다.
       </div>
+
+      <section className="product-detail-hero panel">
+        <ProductThumbnail
+          src={sku.thumbnail_url || sku.image_url}
+          alt={sku.product_name || sku.selfpia_sku_code}
+          size="lg"
+        />
+        <div className="product-detail-summary">
+          <div className="product-detail-title-row">
+            <div>
+              <h2 title={sku.product_name}>{sku.product_name || '상품명 없음'}</h2>
+              <p title={sku.option_value}>{sku.option_value || '옵션 정보 없음'}</p>
+            </div>
+            <StatusBadge value={sku.sku_status} />
+          </div>
+          <ProductMetaChips
+            items={[
+              { key: 'selfpia_sku_code', value: sku.selfpia_sku_code },
+              { key: 'selfpia_product_code', value: sku.selfpia_product_code },
+              { key: 'virtual_sku_code', value: sku.virtual_sku_code },
+              { key: 'virtual_product_code', value: sku.virtual_product_code },
+              { key: 'sku_id', value: sku.sku_id }
+            ]}
+          />
+        </div>
+      </section>
 
       <div className="detail-grid">
         <section className="panel">
@@ -83,25 +108,25 @@ export function ProductDetailPage() {
             <dd>
               <div className="cell-code">
                 <span className="mono ellipsis" title={sku.sku_id}>{sku.sku_id}</span>
-                <CopyButton value={sku.sku_id} />
+                <CopyButton value={sku.sku_id} label="복사" />
               </div>
             </dd>
             <dt>Selfpia Product</dt>
             <dd>
               <div className="cell-code">
-                <span className="mono">{sku.selfpia_product_code || '—'}</span>
-                {sku.selfpia_product_code && <CopyButton value={sku.selfpia_product_code} />}
+                <span className="mono">{sku.selfpia_product_code || '-'}</span>
+                {sku.selfpia_product_code && <CopyButton value={sku.selfpia_product_code} label="복사" />}
               </div>
             </dd>
             <dt>Virtual SKU</dt>
             <dd>
               <div className="cell-code">
-                <span className="mono ellipsis" title={sku.virtual_sku_code}>{sku.virtual_sku_code}</span>
-                <CopyButton value={sku.virtual_sku_code} />
+                <span className="mono ellipsis" title={sku.virtual_sku_code}>{sku.virtual_sku_code || '-'}</span>
+                {sku.virtual_sku_code && <CopyButton value={sku.virtual_sku_code} label="복사" />}
               </div>
             </dd>
             <dt>옵션</dt>
-            <dd>{sku.option_value || '—'}</dd>
+            <dd>{sku.option_value || '-'}</dd>
             <dt>상태</dt>
             <dd><StatusBadge value={sku.sku_status} /></dd>
           </dl>
@@ -109,13 +134,13 @@ export function ProductDetailPage() {
 
         <section className="panel">
           <h2>운영 연결</h2>
-          <p className="hint">아래 링크는 read-only 운영 API 입니다. 새 탭에서 JSON 응답을 그대로 확인할 수 있습니다.</p>
+          <p className="hint">아래 링크는 read-only 운영 API입니다. 현재 화면에서는 master 변경 요청을 생성하지 않습니다.</p>
           <div className="link-list">
             <a href="http://localhost:8080/mapping/own-sku/ambiguous" target="_blank" rel="noreferrer">
-              모호 매칭 API ↗
+              모호 매핑 API 열기
             </a>
             <a href="http://localhost:8080/picking/unmatched" target="_blank" rel="noreferrer">
-              미매칭 주문상품 API ↗
+              미매칭 주문상품 API 열기
             </a>
           </div>
         </section>
@@ -144,17 +169,17 @@ export function ProductDetailPage() {
                   <td>
                     <div className="cell-code">
                       <span className="mono ellipsis" title={alias.code_value}>{alias.code_value}</span>
-                      <CopyButton value={alias.code_value} />
+                      <CopyButton value={alias.code_value} label="복사" />
                     </div>
                   </td>
-                  <td className="mono">{alias.selfpia_product_code || '—'}</td>
-                  <td className="mono">{alias.selfpia_option_no || '—'}</td>
+                  <td className="mono">{alias.selfpia_product_code || '-'}</td>
+                  <td className="mono">{alias.selfpia_option_no || '-'}</td>
                   <td>{alias.is_primary ? <span className="pill pill-on">Y</span> : <span className="pill pill-off">N</span>}</td>
                 </tr>
               ))}
               {aliases.length === 0 && (
                 <tr>
-                  <td colSpan="5" className="empty">alias 가 없습니다.</td>
+                  <td colSpan="5" className="empty">alias가 없습니다.</td>
                 </tr>
               )}
             </tbody>
@@ -184,18 +209,18 @@ export function ProductDetailPage() {
                   <td><CodeSystemBadge value={mapping.channel_code} /></td>
                   <td>
                     <div className="cell-code">
-                      <span className="mono ellipsis" title={mapping.channel_sku_code}>{mapping.channel_sku_code || '—'}</span>
-                      {mapping.channel_sku_code && <CopyButton value={mapping.channel_sku_code} />}
+                      <span className="mono ellipsis" title={mapping.channel_sku_code}>{mapping.channel_sku_code || '-'}</span>
+                      {mapping.channel_sku_code && <CopyButton value={mapping.channel_sku_code} label="복사" />}
                     </div>
                   </td>
-                  <td className="mono ellipsis" title={mapping.seller_product_code}>{mapping.seller_product_code || '—'}</td>
-                  <td className="mono ellipsis" title={mapping.own_sku_code}>{mapping.own_sku_code || '—'}</td>
+                  <td className="mono ellipsis" title={mapping.seller_product_code}>{mapping.seller_product_code || '-'}</td>
+                  <td className="mono ellipsis" title={mapping.own_sku_code}>{mapping.own_sku_code || '-'}</td>
                   <td>{mapping.is_primary ? <span className="pill pill-on">Y</span> : <span className="pill pill-off">N</span>}</td>
                 </tr>
               ))}
               {mappings.length === 0 && (
                 <tr>
-                  <td colSpan="5" className="empty">channel mapping 이 없습니다.</td>
+                  <td colSpan="5" className="empty">channel mapping이 없습니다.</td>
                 </tr>
               )}
             </tbody>

@@ -439,3 +439,33 @@ npm.cmd run dev
 - `/product-code/*` 라우트 제거
 - GitHub push / git add
 - 메이크샵·에이블리 코드매칭 (다른 세션 진행)
+
+## v1 UI Polish round 2 — card layout + image slot placeholder (2026-05-15)
+
+상품관리 v1 frontend/admin 화면을 스마트스토어 preview 느낌의 카드/리스트형 UI로 개선했다. 이번 라운드는 이미지 연결 전 단계이며 DB, API, schema, seed, NAS, 운영 Supabase는 변경하지 않았다.
+
+### 변경 범위
+
+- `ProductListPage`: 테이블 중심 SKU 목록을 96px 이미지 슬롯이 있는 카드형 리스트로 변경. 검색 toolbar, 예시 chip, loading/error/empty 상태는 유지.
+- `ProductDetailPage`: 상단에 큰 이미지 placeholder와 상품명/옵션/코드 chip/status를 묶은 preview형 상세 헤더 추가. 기존 alias/channel mapping 패널은 유지.
+- `AliasSearchPage`: 검색 결과를 작은 썸네일 placeholder가 붙은 리스트로 변경. ambiguous notice, code system badge, copy button 유지.
+- 신규 컴포넌트: `EmptyImagePlaceholder`, `ProductThumbnail`, `ProductMetaChips`, `ProductCardRow`.
+- `styles.css`: product card, thumbnail, placeholder, meta chip, hover shadow, responsive layout 스타일 추가.
+
+### 이미지 처리
+
+- 현재 API 응답에는 `image_url` / `thumbnail_url`이 없으므로 모든 상품은 placeholder로 표시된다.
+- `ProductThumbnail`은 추후 `thumbnail_url` 또는 `image_url`이 들어오면 그대로 `img`로 렌더한다.
+- `img` 로딩 실패 또는 404 발생 시 `EmptyImagePlaceholder`로 fallback한다.
+
+### 검증
+
+- `npm.cmd run build` 성공.
+- Vite build 결과: 48 modules transformed, css `9.95 kB`, js `254.40 kB`.
+- React Router dependency의 `"use client"` directive ignored 경고 2건은 기존 번들러 경고로 판단하며 빌드는 성공.
+
+### 다음 단계: 실제 이미지 연결
+
+- local DB에 `product_code.product_image` 또는 대응 이미지 source 적재 필요.
+- API list/detail/by-code 응답에 `thumbnail_url` 또는 `image_url` 필드 추가 필요.
+- DB schema patch와 운영/로컬 export-import 절차는 별도 승인 후 진행.
