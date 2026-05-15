@@ -1,0 +1,10 @@
+.env.local
+.env.api
+docker-data/postgres/
+exports/*.csv
+exports/*.tsv
+exports/*.xlsx
+server/node_modules/
+frontend/admin/node_modules/
+frontend/admin/.env
+frontend/admin/dist/
