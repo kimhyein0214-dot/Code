@@ -155,7 +155,14 @@ function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes
   return rows;
 }
 
-function buildConnectionSummary({ sku, mappings, ownSkuCodes, codeSummaryRows }) {
+function buildConnectionSummary({
+  sku,
+  mappings,
+  ownSkuCodes,
+  codeSummaryRows,
+  smartstoreAliasCodes,
+  smartstoreCandidateCodes
+}) {
   const connectedChannels = mappings
     .filter((mapping) => mapping.channel_code)
     .reduce((acc, mapping) => {
@@ -163,20 +170,38 @@ function buildConnectionSummary({ sku, mappings, ownSkuCodes, codeSummaryRows })
       acc.set(label, (acc.get(label) || 0) + 1);
       return acc;
     }, new Map());
+
+  // sku_channel_mapping 에 smartstore 가 없어도 code_alias 의
+  // smartstore_option_no (confirmed) 가 있으면 연결 채널로 인정.
+  // 중복 카운트 방지: mappings 에 이미 smartstore 가 있으면 alias 는 무시.
+  const hasSmartstoreMapping = mappings.some((mapping) => mapping.channel_code === 'smartstore');
+  if (!hasSmartstoreMapping && smartstoreAliasCodes.length > 0) {
+    connectedChannels.set('Smartstore', smartstoreAliasCodes.length);
+  }
+
   const connectedText = [...connectedChannels.entries()]
     .map(([label, count]) => `${label} ${count}개`)
     .join(', ');
+
+  // candidate 는 확정 연결로 표기하지 않고 별도 "연결 후보" 라인에 분리.
+  const candidateText = smartstoreCandidateCodes.length > 0
+    ? `Smartstore 후보 ${smartstoreCandidateCodes.length}개`
+    : '';
+
   const unmappedSellers = codeSummaryRows
     .filter((row) => row.status === '미매핑')
     .map((row) => row.seller);
 
-  return [
+  const summary = [
     { label: '기준 SKU', value: sku.selfpia_sku_code || '없음', tone: 'primary' },
     { label: '자사코드', value: ownSkuCodes[0] || '없음', tone: ownSkuCodes[0] ? 'primary' : 'muted' },
     { label: '연결 채널', value: connectedText || '없음', tone: connectedText ? 'success' : 'muted' },
+    { label: '연결 후보', value: candidateText || '없음', tone: candidateText ? 'warning' : 'muted' },
     { label: '미매핑 채널', value: unmappedSellers.length > 0 ? unmappedSellers.join(', ') : '없음', tone: unmappedSellers.length > 0 ? 'warning' : 'muted' },
     { label: '이미지', value: sku.thumbnail_url || sku.image_url ? '있음' : '없음', tone: sku.thumbnail_url || sku.image_url ? 'success' : 'muted' }
   ];
+
+  return summary;
 }
 
 export function ProductDetailPage() {
@@ -233,7 +258,14 @@ export function ProductDetailPage() {
   const smartstoreCandidateCodes = aliasValues(aliases, 'smartstore_option_no_candidate');
   const smartstoreCodes = uniqueValues([...smartstoreAliasCodes, ...smartstoreChannelCodes(mappings)]);
   const codeSummaryRows = buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes, smartstoreCandidateCodes });
-  const connectionSummary = buildConnectionSummary({ sku, mappings, ownSkuCodes, codeSummaryRows });
+  const connectionSummary = buildConnectionSummary({
+    sku,
+    mappings,
+    ownSkuCodes,
+    codeSummaryRows,
+    smartstoreAliasCodes,
+    smartstoreCandidateCodes
+  });
 
   return (
     <section className="page">
