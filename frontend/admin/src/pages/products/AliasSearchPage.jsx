@@ -9,41 +9,48 @@ import { ProductThumbnail } from '../../components/ProductThumbnail.jsx';
 
 const CODE_SYSTEMS = [
   {
+    value: 'all_codes',
+    label: '통합 검색',
+    shortDescription: '모든 코드에서 찾기',
+    description: 'SKU, alias, channel code를 한 번에 넓게 찾습니다.',
+    searchMode: 'all'
+  },
+  {
     value: 'selfpia_sku',
     label: 'Sellpia SKU',
+    shortDescription: '1000-1 같은 셀피아 옵션 코드',
     description: '셀피아 SKU 단위 코드입니다. 상품 상세의 기준 SKU와 1:1로 연결됩니다.'
   },
   {
     value: 'selfpia_product',
     label: 'Sellpia 상품코드',
+    shortDescription: '옵션을 묶는 셀피아 상품 코드',
     description: '셀피아 상품 단위 코드입니다. 같은 상품 아래 여러 옵션 SKU가 함께 조회될 수 있습니다.'
   },
   {
     value: 'own_sku',
     label: '자사코드',
+    shortDescription: 'PA-1-11 같은 내부 자사 코드',
     description: '내부 운영에서 쓰는 자사 옵션 코드입니다. 하나의 코드가 복수 SKU에 연결될 수 있어 검수 대상이 될 수 있습니다.'
   },
   {
     value: 'smartstore_option_no',
     label: 'Smartstore 옵션번호',
+    shortDescription: '운영 확정 스마트스토어 옵션번호',
     description: '운영에서 확정된 스마트스토어 옵션번호입니다.'
   },
   {
     value: 'smartstore_option_no_candidate',
     label: 'Smartstore 후보',
+    shortDescription: '운영 확정 전 자동 후보값',
     description: '자동 추정된 스마트스토어 후보입니다. 운영 확정값이 아니므로 연결됨으로 보지 않습니다.'
   },
   {
     value: 'makeshop_channel_code',
     label: 'MakeShop 코드',
+    shortDescription: '메이크샵 채널 코드',
     description: 'MakeShop channel_sku_code 또는 seller_product_code를 기존 채널 코드 검색 API로 조회합니다.',
     searchMode: 'channel_code'
-  },
-  {
-    value: 'all_codes',
-    label: '통합 코드 검색',
-    description: 'SKU, alias, channel code를 한 번에 넓게 찾습니다.',
-    searchMode: 'all'
   }
 ];
 
@@ -70,7 +77,7 @@ const CODE_SYSTEM_LABELS = {
   channel_code: '채널 코드',
   sku: 'SKU 검색',
   alias: 'Alias',
-  all_codes: '통합 코드 검색'
+  all_codes: '통합 검색'
 };
 
 function findMeta(systemValue) {
@@ -141,7 +148,7 @@ function normalizeRows(result, system, searchMode) {
 
 export function AliasSearchPage() {
   const navigate = useNavigate();
-  const [codeSystem, setCodeSystem] = useState('selfpia_sku');
+  const [codeSystem, setCodeSystem] = useState('all_codes');
   const [codeValue, setCodeValue] = useState('1258-1');
   const [rows, setRows] = useState([]);
   const [detailsBySkuId, setDetailsBySkuId] = useState({});
@@ -256,16 +263,30 @@ export function AliasSearchPage() {
       </div>
 
       <section className="section-card alias-search-card" aria-label="Alias 검색 조건">
+        <div className="alias-type-grid" role="radiogroup" aria-label="검색 타입">
+          {CODE_SYSTEMS.map((system) => {
+            const selected = codeSystem === system.value;
+            const candidateType = system.value === 'smartstore_option_no_candidate';
+            return (
+              <button
+                key={system.value}
+                type="button"
+                className={`alias-type-option ${selected ? 'is-selected' : ''} ${candidateType ? 'is-candidate' : ''}`}
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setCodeSystem(system.value)}
+              >
+                <span className="alias-type-title">
+                  {system.label}
+                  {candidateType && <span className="status-badge status-candidate">운영 미확정</span>}
+                </span>
+                <span className="alias-type-description">{system.shortDescription}</span>
+              </button>
+            );
+          })}
+        </div>
+
         <form className="toolbar product-search-toolbar alias-search-form" onSubmit={onSubmit}>
-          <select
-            value={codeSystem}
-            onChange={(event) => setCodeSystem(event.target.value)}
-            aria-label="Code system"
-          >
-            {CODE_SYSTEMS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
           <input
             value={codeValue}
             onChange={(event) => setCodeValue(event.target.value)}
