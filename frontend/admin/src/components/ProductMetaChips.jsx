@@ -3,13 +3,13 @@ import React from 'react';
 import { CopyButton } from './CopyButton.jsx';
 
 const LABELS = {
-  selfpia_sku_code: 'Selfpia SKU',
-  selfpia_product_code: 'Selfpia Product',
+  selfpia_sku_code: 'Sellpia SKU',
+  selfpia_product_code: 'Sellpia 상품코드',
   virtual_sku_code: 'Virtual SKU',
   virtual_product_code: 'Virtual Product',
-  own_sku_code: 'Own SKU',
-  smartstore_option_no: '스마트스토어',
-  smartstore_code: '스마트스토어',
+  own_sku_code: '자사코드',
+  smartstore_option_no: 'Smartstore 옵션번호',
+  smartstore_code: 'Smartstore',
   matched_code_value: 'Matched',
   sku_id: '내부 ID'
 };

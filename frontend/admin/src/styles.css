@@ -685,9 +685,24 @@ table.zebra tbody tr:nth-child(even) {
   color: #16733d;
 }
 
-.code-system-makeshop {
+.code-system-smartstore-option-no-candidate {
+  background: #fff4d6;
+  color: #8a5a00;
+}
+
+.code-system-makeshop,
+.code-system-makeshop-sku,
+.code-system-makeshop-channel-code,
+.code-system-channel-code {
   background: #f3efff;
   color: #6d28d9;
+}
+
+.code-system-sku,
+.code-system-alias,
+.code-system-all-codes {
+  background: #eef1f5;
+  color: #3f4d61;
 }
 
 .code-system-ably {
@@ -808,6 +823,43 @@ table.zebra tbody tr:nth-child(even) {
   max-width: 760px;
 }
 
+.alias-search-card {
+  gap: 18px;
+}
+
+.alias-search-form select {
+  min-width: 240px;
+}
+
+.alias-system-help {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e6ebf3;
+  border-radius: 14px;
+  color: #4b5870;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.alias-examples {
+  gap: 9px;
+}
+
+.alias-example-chip {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  min-height: 34px;
+}
+
+.alias-example-chip small {
+  color: #7a8596;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .product-card-list,
 .alias-result-list {
   display: grid;
@@ -835,7 +887,12 @@ table.zebra tbody tr:nth-child(even) {
 }
 
 .alias-result-row {
-  grid-template-columns: 74px minmax(0, 1fr) auto;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  padding: 18px;
+}
+
+.alias-result-row.is-candidate {
+  border-color: #f6d98b;
 }
 
 .product-card-row:hover,
@@ -922,6 +979,52 @@ table.zebra tbody tr:nth-child(even) {
 .detail-button {
   min-height: 36px;
   padding: 8px 12px;
+}
+
+.alias-result-badges {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.alias-match-summary {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e5ebf4;
+  border-radius: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.alias-match-label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.alias-match-value {
+  color: #18212f;
+  font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alias-candidate-note {
+  color: #8a5a00;
+  font-size: 13px;
+  font-weight: 750;
+  margin: 0;
+}
+
+.alias-empty-state {
+  padding: 24px;
 }
 
 .product-thumbnail {

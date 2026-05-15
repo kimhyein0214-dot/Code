@@ -875,3 +875,21 @@ npm.cmd run dev
 - `frontend/admin/src/styles.css`
 - `docs/product_management_v1_runbook.md`
 - `docs/codex_handoff_status.md`
+
+## Alias search review UI (2026-05-15)
+
+`/products/aliases` 화면을 실무 검수자가 코드 연결 대상을 빠르게 이해할 수 있도록 정리했다. API endpoint는 변경하지 않고, alias 검색은 기존 `GET /api/products/skus/by-code/{codeSystem}/{codeValue}`, MakeShop/통합 검색은 기존 `GET /api/products/search`를 사용한다.
+
+변경 내용:
+
+- code system label을 사람이 읽는 명칭으로 정리했다.
+  - `selfpia_sku`: Sellpia SKU
+  - `selfpia_product`: Sellpia 상품코드
+  - `own_sku`: 자사코드
+  - `smartstore_option_no`: Smartstore 옵션번호
+  - `smartstore_option_no_candidate`: Smartstore 후보
+  - MakeShop/channel code 계열: MakeShop 코드 또는 채널 코드
+- 결과 카드는 검색 코드, 연결 대상 SKU chip, code system badge, 상태 badge, 상세 보기 affordance를 한 카드 안에 배치한다.
+- `smartstore_option_no_candidate`는 `운영 미확정` badge와 안내 문구로 확정 Smartstore 옵션번호와 구분한다.
+- `sku_id` UUID는 결과 카드 메인에 노출하지 않는다.
+- 예시 검색 chip에 `1258-1`, `1000-1`, `11258-1`, `PA-1-11`, Smartstore 후보, MakeShop 코드, `LOCAL_TEST_PM`을 제공한다.

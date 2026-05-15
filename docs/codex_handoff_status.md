@@ -1851,3 +1851,43 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 - ProductDetailPage 변경 없음.
 - AliasSearchPage / ChangeRequestsPlaceholderPage 변경 없음.
 - GitHub push / `git add .` / commit 없음.
+
+## Alias search review UI (2026-05-15)
+
+### 목적
+
+`/products/aliases` 화면에서 셀피아 코드, 자사코드, Smartstore 옵션번호/후보, MakeShop 코드가 어떤 SKU에 연결되는지 더 쉽게 검수할 수 있도록 결과 카드와 code system 표현을 정리했다.
+
+### 수정 파일
+
+- `frontend/admin/src/pages/products/AliasSearchPage.jsx`
+- `frontend/admin/src/components/StatusBadge.jsx`
+- `frontend/admin/src/components/ProductMetaChips.jsx`
+- `frontend/admin/src/styles.css`
+- `docs/product_management_v1_runbook.md`
+- `docs/codex_handoff_status.md`
+
+### 표시 기준
+
+- `selfpia_sku`: Sellpia SKU
+- `selfpia_product`: Sellpia 상품코드
+- `own_sku`: 자사코드
+- `smartstore_option_no`: Smartstore 옵션번호
+- `smartstore_option_no_candidate`: Smartstore 후보
+- `makeshop_channel_code`: MakeShop 코드
+- `all_codes`: 통합 코드 검색
+
+### Smartstore 후보 처리
+
+- `smartstore_option_no_candidate` 결과는 `Smartstore 후보` + `운영 미확정`으로 표시한다.
+- 카드 안에 `자동 후보 / 운영 미확정 값입니다. 확정 Smartstore 옵션번호처럼 사용하지 마세요.` 안내를 노출한다.
+- confirmed `smartstore_option_no`와 같은 연결됨 tone으로 보이지 않도록 warning 계열 badge를 사용한다.
+
+### Safety
+
+- DB schema/data 변경 없음.
+- API endpoint 변경 없음.
+- local DB import/apply 없음.
+- ProductDetailPage / ProductListPage 변경 없음.
+- write 기능 추가 없음.
+- GitHub push / `git add .` / commit 없음.
