@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { productsApi } from '../../api/client.js';
 import { ProductCardRow } from '../../components/ProductCardRow.jsx';
@@ -9,24 +9,58 @@ const SEARCH_EXAMPLES = ['1258-1', '1000-1', '11258-1', '피어싱', 'LOCAL_TEST
 export function ProductListPage() {
   const [search, setSearch] = useState(DEFAULT_SEARCH);
   const [rows, setRows] = useState([]);
+  const [detailsBySkuId, setDetailsBySkuId] = useState({});
+  const [detailLoading, setDetailLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastQuery, setLastQuery] = useState('');
+  const requestSeq = useRef(0);
 
   async function load(term) {
     const q = term ?? search;
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
     setLoading(true);
+    setDetailLoading(false);
     setError('');
     try {
       const result = await productsApi.listSkus({ search: q, limit: 50 });
-      setRows(result.data || []);
+      const nextRows = result.data || [];
+      setRows(nextRows);
+      setDetailsBySkuId({});
       setLastQuery(q);
+      setLoading(false);
+
+      const skuIds = [...new Set(nextRows.map((row) => row.sku_id).filter(Boolean))];
+      if (skuIds.length > 0) {
+        setDetailLoading(true);
+        const detailEntries = await Promise.all(
+          skuIds.map(async (skuId) => {
+            try {
+              const detail = await productsApi.getSku(skuId);
+              return [skuId, detail.data || null];
+            } catch {
+              return [skuId, null];
+            }
+          })
+        );
+        if (requestSeq.current === seq) {
+          setDetailsBySkuId(Object.fromEntries(detailEntries));
+        }
+      }
     } catch (err) {
+      if (requestSeq.current !== seq) {
+        return;
+      }
       setError(err.message);
       setRows([]);
+      setDetailsBySkuId({});
       setLastQuery(q);
     } finally {
-      setLoading(false);
+      if (requestSeq.current === seq) {
+        setLoading(false);
+        setDetailLoading(false);
+      }
     }
   }
 
@@ -99,6 +133,8 @@ export function ProductListPage() {
           <ProductCardRow
             key={`${row.sku_id}-${row.selfpia_sku_code || row.virtual_sku_code || index}`}
             product={row}
+            detail={detailsBySkuId[row.sku_id]}
+            detailLoading={detailLoading && detailsBySkuId[row.sku_id] === undefined}
           />
         ))}
         {!loading && rows.length === 0 && (

@@ -1813,3 +1813,41 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 - write 기능 추가 없음.
 - change request write 기능 추가 없음.
 - GitHub push / `git add .` / commit 없음.
+
+## Product list connection status UI (2026-05-15)
+
+### 목적
+
+상품 목록(`/products`)에서 상세 화면으로 들어가기 전에 검수자가 SKU별 연결 상태를 빠르게 판단할 수 있도록 카드 row에 판매처/이미지/자사코드 상태 badge를 추가했다. 상세 화면의 `판매처별 코드 요약`과 톤을 맞추되, 목록에서는 핵심 상태만 압축해서 보여준다.
+
+### 수정 파일
+
+- `frontend/admin/src/pages/products/ProductListPage.jsx`
+- `frontend/admin/src/components/ProductCardRow.jsx`
+- `frontend/admin/src/styles.css`
+- `docs/product_management_v1_runbook.md`
+- `docs/codex_handoff_status.md`
+
+### 목록 카드 표시 방식
+
+- 목록 API는 그대로 유지한다.
+- `ProductListPage`가 목록 조회 후 표시된 SKU의 기존 상세 API를 read-only로 보강 조회해 `aliases`와 `channel_mappings`만 카드에 전달한다.
+- `ProductCardRow`는 다음 badge를 표시한다.
+  - `MakeShop 연결됨` / `MakeShop 미매핑`
+  - `Smartstore 연결됨` / `Smartstore 후보` / `Smartstore 미매핑`
+  - `이미지 있음` / `이미지 없음`
+  - `자사코드 있음` / `자사코드 없음`
+
+### UUID 처리
+
+- 목록 카드의 핵심 정보는 `selfpia_sku_code`, `own_sku_code`, `selfpia_product_code`, `virtual_sku_code` 중심이다.
+- `sku_id` UUID는 목록 메인 카드에 표시하지 않는다.
+
+### 유지 원칙
+
+- DB schema/data 변경 없음.
+- API endpoint 변경 없음.
+- local DB import/apply 없음.
+- ProductDetailPage 변경 없음.
+- AliasSearchPage / ChangeRequestsPlaceholderPage 변경 없음.
+- GitHub push / `git add .` / commit 없음.

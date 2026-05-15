@@ -854,3 +854,24 @@ npm.cmd run dev
   - Smartstore 미매핑 표시.
   - UUID 메인 요약 미노출.
   - Raw Alias / Raw Channel Mapping 접기/펼치기 항목 유지.
+
+## Product list connection status UI (2026-05-15)
+
+상품 목록 화면에서 상세 진입 전 SKU별 연결 상태를 빠르게 훑을 수 있도록 카드 row에 read-only 연결 상태 badge를 추가했다. API endpoint 변경 없이 기존 목록 조회 후 같은 SKU의 상세 조회 API를 읽기 전용으로 보강 호출한다.
+
+표시 기준:
+
+- MakeShop: `sku_channel_mapping.channel_code = 'makeshop'`가 있으면 `MakeShop 연결됨`, 없으면 `MakeShop 미매핑`.
+- Smartstore: confirmed `smartstore_option_no` alias 또는 `smartstore` channel mapping이 있으면 `Smartstore 연결됨`, `smartstore_option_no_candidate` alias가 있으면 `Smartstore 후보`, 둘 다 없으면 `Smartstore 미매핑`.
+- 이미지: `thumbnail_url` 또는 `image_url`이 있으면 `이미지 있음`, 없으면 `이미지 없음`.
+- 자사코드: `own_sku` alias 또는 channel mapping의 `own_sku_code`가 있으면 `자사코드 있음`, 없으면 `자사코드 없음`.
+
+목록 카드의 핵심 code chip은 `selfpia_sku_code`, `own_sku_code`, `selfpia_product_code`, `virtual_sku_code` 중심으로 유지한다. `sku_id` UUID는 목록 메인 카드에 노출하지 않는다.
+
+변경 파일:
+
+- `frontend/admin/src/pages/products/ProductListPage.jsx`
+- `frontend/admin/src/components/ProductCardRow.jsx`
+- `frontend/admin/src/styles.css`
+- `docs/product_management_v1_runbook.md`
+- `docs/codex_handoff_status.md`

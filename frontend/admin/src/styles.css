@@ -885,6 +885,20 @@ table.zebra tbody tr:nth-child(even) {
   white-space: nowrap;
 }
 
+.product-card-status-strip {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.product-card-status-strip .status-badge {
+  font-size: 11px;
+  min-height: 24px;
+  padding: 6px 9px;
+}
+
 .product-card-actions,
 .alias-result-actions {
   align-items: center;
