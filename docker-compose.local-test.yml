@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: product_ops_test_postgres
+    restart: unless-stopped
+    env_file:
+      - .env.local
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./docker-data/postgres:/var/lib/postgresql/data
+      - ./exports:/exports
+      - ./sql:/sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
