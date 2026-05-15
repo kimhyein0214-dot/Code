@@ -680,12 +680,14 @@ table.zebra tbody tr:nth-child(even) {
 }
 
 .code-system-smartstore,
-.code-system-smartstore-option-no {
+.code-system-smartstore-option-no,
+.code-system-smartstore-product-no {
   background: #eaf8ef;
   color: #16733d;
 }
 
-.code-system-smartstore-option-no-candidate {
+.code-system-smartstore-option-no-candidate,
+.code-system-smartstore-product-no-candidate {
   background: #fff4d6;
   color: #8a5a00;
 }
@@ -827,8 +829,60 @@ table.zebra tbody tr:nth-child(even) {
   gap: 18px;
 }
 
-.alias-search-form select {
-  min-width: 240px;
+.alias-type-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.alias-type-option {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  color: #334155;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  min-height: 82px;
+  padding: 12px;
+  text-align: left;
+  transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
+}
+
+.alias-type-option:hover {
+  background: #ffffff;
+  border-color: #cfe0ff;
+  transform: translateY(-1px);
+}
+
+.alias-type-option.is-selected {
+  background: #eef4ff;
+  border-color: #93b4ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.09);
+}
+
+.alias-type-option.is-candidate.is-selected {
+  background: #fff8e6;
+  border-color: #f1c65d;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
+}
+
+.alias-type-title {
+  align-items: center;
+  color: #18212f;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-weight: 850;
+  gap: 6px;
+  line-height: 1.2;
+}
+
+.alias-type-description {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .alias-system-help {
@@ -1169,6 +1223,10 @@ table.zebra tbody tr:nth-child(even) {
     max-width: 160px;
   }
 
+  .alias-type-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .product-card-row {
     grid-template-columns: 104px minmax(0, 1fr);
   }
@@ -1225,6 +1283,10 @@ table.zebra tbody tr:nth-child(even) {
     flex-direction: column;
   }
 
+  .alias-type-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   input,
   select {
     min-width: 0;
@@ -1251,6 +1313,10 @@ table.zebra tbody tr:nth-child(even) {
   }
 
   .connection-summary-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .alias-type-grid {
     grid-template-columns: 1fr;
   }
 

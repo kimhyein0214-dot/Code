@@ -14,6 +14,8 @@ const CODE_SYSTEM_LABEL = {
   own_set: '자사 세트코드',
   smartstore_option_no: 'Smartstore 옵션번호',
   smartstore_option_no_candidate: 'Smartstore 후보',
+  smartstore_product_no: 'Smartstore 상품번호',
+  smartstore_product_no_candidate: 'Smartstore 상품 후보',
   smartstore: 'Smartstore',
   makeshop: 'MakeShop',
   makeshop_sku: 'MakeShop SKU',

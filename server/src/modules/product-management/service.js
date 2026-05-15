@@ -29,6 +29,17 @@ function likeSearch(value) {
   return trimmed ? `%${trimmed}%` : null;
 }
 
+function uniqueAliasValues(aliases, codeSystem) {
+  return [
+    ...new Set(
+      aliases
+        .filter((alias) => alias.code_system === codeSystem)
+        .map((alias) => alias.code_value)
+        .filter((value) => value !== undefined && value !== null && value !== '')
+    )
+  ];
+}
+
 export async function getSkuList(query) {
   const limit = clampLimit(query.limit);
   const offset = normalizeOffset(query.offset);
@@ -55,6 +66,12 @@ export async function getSkuDetail(skuId) {
     data: {
       ...sku,
       aliases,
+      smartstore_codes: {
+        product_nos: uniqueAliasValues(aliases, 'smartstore_product_no'),
+        product_no_candidates: uniqueAliasValues(aliases, 'smartstore_product_no_candidate'),
+        option_nos: uniqueAliasValues(aliases, 'smartstore_option_no'),
+        option_no_candidates: uniqueAliasValues(aliases, 'smartstore_option_no_candidate')
+      },
       channel_mappings: channelMappings,
       change_request: {
         enabled: false,

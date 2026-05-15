@@ -61,7 +61,15 @@ function MappingStatus({ status }) {
   return <span className={`status-badge ${className}`}>{status}</span>;
 }
 
-function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes, smartstoreCandidateCodes }) {
+function buildCodeSummaryRows({
+  sku,
+  mappings,
+  ownSkuCodes,
+  smartstoreProductCodes,
+  smartstoreProductCandidateCodes,
+  smartstoreAliasCodes,
+  smartstoreCandidateCodes
+}) {
   const rows = [
     {
       key: 'selfpia',
@@ -97,7 +105,7 @@ function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes
         key: `smartstore-${mapping.id || index}`,
         group: '채널',
         seller: 'Smartstore',
-        productCode: mapping.seller_product_code,
+        productCode: mapping.seller_product_code || smartstoreProductCodes[index] || smartstoreProductCodes[0],
         optionCode: mapping.channel_sku_code || smartstoreAliasCodes[index] || smartstoreAliasCodes[0],
         ownSkuCode: mapping.own_sku_code || ownSkuCodes[0],
         status: '연결됨',
@@ -109,18 +117,18 @@ function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes
       key: 'smartstore-alias',
       group: '채널',
       seller: 'Smartstore',
-      productCode: '',
+      productCode: smartstoreProductCodes.join(', '),
       optionCode: smartstoreAliasCodes.join(', '),
       ownSkuCode: ownSkuCodes[0],
       status: '연결됨',
-      note: 'confirmed smartstore_option_no alias'
+      note: 'confirmed smartstore_product_no / smartstore_option_no alias'
     });
-  } else if (smartstoreCandidateCodes.length > 0) {
+  } else if (smartstoreCandidateCodes.length > 0 || smartstoreProductCandidateCodes.length > 0) {
     rows.push({
       key: 'smartstore-candidate',
       group: '후보',
       seller: 'Smartstore',
-      productCode: '',
+      productCode: smartstoreProductCandidateCodes.join(', '),
       optionCode: smartstoreCandidateCodes.join(', '),
       ownSkuCode: ownSkuCodes[0],
       status: '후보',
@@ -135,16 +143,19 @@ function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes
       optionCode: '',
       ownSkuCode: ownSkuCodes[0],
       status: '미매핑',
-      note: 'smartstore_option_no alias 또는 channel mapping 없음'
+      note: 'smartstore_product_no / smartstore_option_no alias 또는 channel mapping 없음'
     });
   }
 
-  if ((smartstoreMappings.length > 0 || smartstoreAliasCodes.length > 0) && smartstoreCandidateCodes.length > 0) {
+  if (
+    (smartstoreMappings.length > 0 || smartstoreAliasCodes.length > 0 || smartstoreProductCodes.length > 0) &&
+    (smartstoreCandidateCodes.length > 0 || smartstoreProductCandidateCodes.length > 0)
+  ) {
     rows.push({
       key: 'smartstore-candidate-reference',
       group: '후보',
       seller: 'Smartstore',
-      productCode: '',
+      productCode: smartstoreProductCandidateCodes.join(', '),
       optionCode: smartstoreCandidateCodes.join(', '),
       ownSkuCode: ownSkuCodes[0],
       status: '후보',
@@ -253,11 +264,34 @@ export function ProductDetailPage() {
 
   const aliases = sku.aliases || [];
   const mappings = sku.channel_mappings || [];
+  const smartstoreCodesByApi = sku.smartstore_codes || {};
   const ownSkuCodes = aliasValues(aliases, 'own_sku');
-  const smartstoreAliasCodes = aliasValues(aliases, 'smartstore_option_no');
-  const smartstoreCandidateCodes = aliasValues(aliases, 'smartstore_option_no_candidate');
+  const smartstoreProductCodes = uniqueValues([
+    ...(smartstoreCodesByApi.product_nos || []),
+    ...aliasValues(aliases, 'smartstore_product_no')
+  ]);
+  const smartstoreProductCandidateCodes = uniqueValues([
+    ...(smartstoreCodesByApi.product_no_candidates || []),
+    ...aliasValues(aliases, 'smartstore_product_no_candidate')
+  ]);
+  const smartstoreAliasCodes = uniqueValues([
+    ...(smartstoreCodesByApi.option_nos || []),
+    ...aliasValues(aliases, 'smartstore_option_no')
+  ]);
+  const smartstoreCandidateCodes = uniqueValues([
+    ...(smartstoreCodesByApi.option_no_candidates || []),
+    ...aliasValues(aliases, 'smartstore_option_no_candidate')
+  ]);
   const smartstoreCodes = uniqueValues([...smartstoreAliasCodes, ...smartstoreChannelCodes(mappings)]);
-  const codeSummaryRows = buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes, smartstoreCandidateCodes });
+  const codeSummaryRows = buildCodeSummaryRows({
+    sku,
+    mappings,
+    ownSkuCodes,
+    smartstoreProductCodes,
+    smartstoreProductCandidateCodes,
+    smartstoreAliasCodes,
+    smartstoreCandidateCodes
+  });
   const connectionSummary = buildConnectionSummary({
     sku,
     mappings,
