@@ -12,8 +12,8 @@ const CODE_SYSTEM_LABEL = {
   own_sku: 'Own SKU',
   own_product: 'Own Product',
   own_set: 'Own Set',
-  smartstore_option_no: 'Smartstore Option',
-  smartstore: 'Smartstore',
+  smartstore_option_no: '스마트스토어',
+  smartstore: '스마트스토어',
   makeshop: 'MakeShop',
   ably: 'Ably',
   playauto: 'Playauto'

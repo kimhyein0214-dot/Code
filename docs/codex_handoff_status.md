@@ -1315,3 +1315,432 @@ PowerShell에서는 `< file.sql` 리다이렉션을 쓰지 않고, `docker cp` +
 1. `outputs/dryrun_apply_makeshop_auto_confirm_v3_result.txt`를 검수한다.
 2. dryrun apply 결과가 PASS인지 확인한다.
 3. 사용자 명시 승인 후에만 실제 apply SQL 작성을 검토한다.
+
+## MakeShop auto_confirm v3 real local apply SQL prepared (2026-05-15)
+
+### 현재 상태
+
+`dryrun_apply_makeshop_auto_confirm_v3.sql` 결과가 PASS로 확인되어, 사용자 승인 하에 로컬 `product_ops_test` DB 전용 실제 apply SQL과 postcheck SQL을 작성했다.
+
+중요: SQL 파일만 작성했으며, 실행은 하지 않았다.
+
+### Dryrun apply PASS 기준
+
+| 항목 | 값 |
+|---|---:|
+| source_rows | 11,179 |
+| insert_candidate_rows | 11,179 |
+| idempotent_existing_rows | 0 |
+| conflict_existing_different_sku_rows | 0 |
+| duplicate_source_channel_sku_code | 0 |
+| null_required_key_rows | 0 |
+| missing_matched_sku_rows | 0 |
+| inserted_rows in dryrun transaction | 11,179 |
+| delta in dryrun transaction | 11,179 |
+| expected_delta_matches | true |
+| rollback | complete |
+
+### 작성 파일
+
+| 파일 | 목적 |
+|---|---|
+| `sql/apply_makeshop_auto_confirm_v3.sql` | 로컬 `product_ops_test` 전용 실제 apply SQL. `/tmp/makeshop_auto_confirm_candidates_v3.csv`를 staging TEMP table에 적재하고 11,179건 clean insert 조건을 만족할 때만 `product_code.sku_channel_mapping`에 insert 후 `COMMIT` |
+| `sql/postcheck_makeshop_auto_confirm_v3.sql` | apply 후 read-only postcheck. 11,179건 반영, missing/conflict/duplicate/null key 여부 확인 |
+
+### Apply SQL 정책
+
+- 실제 apply 대상: 로컬 `product_ops_test` DB
+- 운영 DB 접근/변경 금지
+- persistent DDL 없음
+- API/Frontend 변경 없음
+- target table: `product_code.sku_channel_mapping`
+- source: `/tmp/makeshop_auto_confirm_candidates_v3.csv`
+- expected insert rows: 11,179
+- channel_code: `makeshop`
+- conflict policy:
+  - source duplicate key 있으면 fail
+  - null required key / missing matched SKU 있으면 fail
+  - 기존 같은 key + 같은 SKU도 first apply에서는 fail
+  - 기존 같은 key + 다른 SKU는 fail
+  - clean 11,179 insert 후보일 때만 commit
+
+### 사용자 실행 명령
+
+실제 apply는 rollback dryrun이 아니라 `COMMIT`되는 로컬 DB 변경이다.
+
+```powershell
+docker cp .\outputs\makeshop_auto_confirm_candidates_v3.csv product_ops_test_postgres:/tmp/makeshop_auto_confirm_candidates_v3.csv
+
+docker cp .\sql\apply_makeshop_auto_confirm_v3.sql product_ops_test_postgres:/tmp/apply_makeshop_auto_confirm_v3.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/apply_makeshop_auto_confirm_v3.sql 2>&1 |
+  Tee-Object -FilePath .\outputs\apply_makeshop_auto_confirm_v3_result.txt
+```
+
+Postcheck:
+
+```powershell
+docker cp .\sql\postcheck_makeshop_auto_confirm_v3.sql product_ops_test_postgres:/tmp/postcheck_makeshop_auto_confirm_v3.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/postcheck_makeshop_auto_confirm_v3.sql 2>&1 |
+  Tee-Object -FilePath .\outputs\postcheck_makeshop_auto_confirm_v3_result.txt
+```
+
+### 다음 판단 기준
+
+1. apply result에서 `COMMIT` 완료 여부 확인.
+2. apply postcheck에서:
+   - source rows = 11,179
+   - matched_source_rows = 11,179
+   - missing_mapping_rows = 0
+   - conflict_rows = 0
+   - duplicate_channel_sku_code_keys = 0
+   - null_key_or_missing_sku_rows = 0
+3. postcheck PASS 후에도 운영 DB 적용은 별도 설계/승인 단계에서만 검토한다.
+
+## MakeShop auto_confirm v3 local apply PASS and review plan (2026-05-15)
+
+### 완료 상태
+
+로컬 `product_ops_test` DB에서 MakeShop `auto_confirm v3` apply 및 postcheck가 PASS로 확인됐다.
+
+| 항목 | 값 |
+|---|---:|
+| target table | `product_code.sku_channel_mapping` |
+| channel_code | `makeshop` |
+| inserted_rows | 11,179 |
+| makeshop_mapping_rows | 11,179 |
+| matched_source_rows | 11,179 |
+| duplicate channel_sku_code | 0 |
+| conflict rows | 0 |
+| missing mapping rows | 0 |
+| null key / missing SKU | 0 |
+| new_regex_candidate_rows | 91 |
+| changed_from_v2_rows | 8 |
+| repeated matched_sku 3+ rows | 42 |
+
+`apply_makeshop_auto_confirm_v3.sql`은 `COMMIT` 완료되었고, `postcheck_makeshop_auto_confirm_v3.sql`은 read-only postcheck로 정상 완료됐다.
+
+### 이번 설계 산출물
+
+| 파일 | 목적 |
+|---|---|
+| `docs/makeshop_review_required_plan.md` | MakeShop 잔여 `review_required` 대상 분류 및 후속 처리 전략 |
+
+### 남은 review_required 처리 방향
+
+- `null_key`: SKU mapping 제외. product-level/meta row 여부 진단.
+- `pattern_unmatched`: regex 보강 후보와 manual review 후보 분리.
+- `own_sku_not_in_alias`: alias 누락 후보 export 후 별도 alias backfill 설계.
+- `own_sku_ambiguous`: 자동해소 금지 유지. `opt_values` token, `sku_master.option_value`, selfpia alias, product_uid context, barcode scope를 사용해 2차 매칭 기준 설계.
+
+### 다음 SQL 제안
+
+아직 작성/실행/적용하지 않는다. 다음 단계에서 SELECT-only 진단 SQL로 진행한다.
+
+- `sql/diagnose_makeshop_review_required_v3_summary.sql`
+- `sql/export_makeshop_review_required_v3_samples.sql`
+- `sql/diagnose_makeshop_own_sku_not_in_alias_backfill.sql`
+- `sql/diagnose_makeshop_ambiguous_token_scoring.sql`
+- `sql/diagnose_makeshop_ambiguous_barcode_scope.sql`
+- `sql/export_makeshop_ambiguous_manual_review_matrix.sql`
+
+### 금지 상태 유지
+
+- 운영 DB 반영 금지.
+- review 대상 apply 금지.
+- DDL 금지.
+- API/Frontend 변경 금지.
+
+## MakeShop review diagnostics stage 1 prepared (2026-05-15)
+
+### 목적
+
+MakeShop `auto_confirm v3` 로컬 apply PASS 이후 남은 `review_required` 대상에 대해, apply가 아닌 SELECT-only 1차 진단 SQL을 준비했다.
+
+### 작성 파일
+
+| 파일 | 목적 |
+|---|---|
+| `sql/diagnose_makeshop_review_required_v3_summary.sql` | v3 기준 전체 CSV를 재분류하고, 이미 로컬 apply된 MakeShop mapping 11,179건과의 overlap 및 review reason별 규모 확인 |
+| `sql/diagnose_makeshop_own_sku_not_in_alias_backfill.sql` | `own_sku_not_in_alias` row/code를 전수 진단하고, normalized alias 유사 매칭 기반 alias backfill 후보 CSV export |
+| `sql/diagnose_makeshop_ambiguous_token_scoring.sql` | `own_sku_ambiguous` candidate SKU matrix를 펼치고 `opt_values` vs `sku_master.option_value` token score를 계산해 자동해소 가능성 후보와 수동검토 후보를 diagnostic label로 분리 |
+
+### 출력 CSV
+
+| 파일 | 생성 위치 |
+|---|---|
+| own_sku alias backfill 후보 | `/tmp/makeshop_own_sku_not_in_alias_backfill_candidates.csv` |
+
+### 금지 상태 유지
+
+- review 대상 apply 금지
+- 운영 DB 반영 금지
+- DDL 금지
+- API/Frontend 변경 금지
+- DB 영구 변경 금지
+- 이번 SQL들은 `product_ops_test` guard, `BEGIN` / `ROLLBACK`, `CREATE TEMP TABLE`, SELECT / `\copy TO` 중심으로 작성
+
+### 사용자 실행 명령
+
+```powershell
+docker cp .\outputs\makeshop_minimal_full.csv product_ops_test_postgres:/tmp/makeshop_minimal_full.csv
+
+docker cp .\sql\diagnose_makeshop_review_required_v3_summary.sql product_ops_test_postgres:/tmp/diagnose_makeshop_review_required_v3_summary.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/diagnose_makeshop_review_required_v3_summary.sql 2>&1 |
+  Tee-Object -FilePath .\outputs\diagnose_makeshop_review_required_v3_summary_result.txt
+
+docker cp .\sql\diagnose_makeshop_own_sku_not_in_alias_backfill.sql product_ops_test_postgres:/tmp/diagnose_makeshop_own_sku_not_in_alias_backfill.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/diagnose_makeshop_own_sku_not_in_alias_backfill.sql 2>&1 |
+  Tee-Object -FilePath .\outputs\diagnose_makeshop_own_sku_not_in_alias_backfill_result.txt
+
+docker cp product_ops_test_postgres:/tmp/makeshop_own_sku_not_in_alias_backfill_candidates.csv .\outputs\makeshop_own_sku_not_in_alias_backfill_candidates.csv
+
+docker cp .\sql\diagnose_makeshop_ambiguous_token_scoring.sql product_ops_test_postgres:/tmp/diagnose_makeshop_ambiguous_token_scoring.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/diagnose_makeshop_ambiguous_token_scoring.sql 2>&1 |
+  Tee-Object -FilePath .\outputs\diagnose_makeshop_ambiguous_token_scoring_result.txt
+```
+
+PowerShell에서는 `< file.sql` 리다이렉션을 쓰지 않고, `docker cp` + `docker exec ... psql -f` 방식을 사용한다.
+
+### 다음 판단 기준
+
+1. review_required reason별 최종 rows 확정
+2. already applied MakeShop mapping과 review 대상 overlap이 없는지 확인
+3. `own_sku_not_in_alias` normalized alias unique 후보가 실제 backfill 가능한지 검수
+4. ambiguous token scoring에서 strong unique top1 후보가 충분히 있는지 확인
+5. barcode scope / manual review matrix SQL 작성 여부 결정
+## Product Management v1 admin UI refresh (2026-05-15)
+
+### 목적
+
+frontend/admin 상품관리 v1 UI를 read-only 원칙 안에서 깔끔한 관리자 UI로 개편했다. 방향은 밝은 회색 배경, 흰 카드, 넉넉한 spacing, 약한 shadow, 명확한 텍스트 위계, 파란 계열 단일 강조색이다. 토스 스타일에서 영감을 받은 정돈감만 참고했고, 브랜드/화면을 복제하지 않았다.
+
+### 변경 파일
+
+- `frontend/admin/src/styles.css`
+- `frontend/admin/src/components/Layout.jsx`
+- `frontend/admin/src/components/ProductCardRow.jsx`
+- `frontend/admin/src/components/ProductThumbnail.jsx`
+- `frontend/admin/src/components/ProductMetaChips.jsx`
+- `frontend/admin/src/components/CopyButton.jsx`
+- `frontend/admin/src/components/EmptyImagePlaceholder.jsx`
+- `frontend/admin/src/pages/products/ProductListPage.jsx`
+- `frontend/admin/src/pages/products/ProductDetailPage.jsx`
+- `frontend/admin/src/pages/products/AliasSearchPage.jsx`
+- `frontend/admin/src/pages/products/ChangeRequestsPlaceholderPage.jsx`
+- `docs/product_management_v1_runbook.md`
+- `docs/codex_handoff_status.md`
+
+### 화면별 변경
+
+- 공통: 최대폭 1180px, 부드러운 회색 배경, white card surface, read-only banner, 가벼운 sidebar로 정리.
+- SKU 목록: 검색 영역을 section card로 묶고, 예시 chip을 정돈했다. 결과는 thumbnail, 상품명, 옵션, 상태, 주요 코드 chip, 상세 이동 affordance가 보이는 card row로 정리했다.
+- SKU 상세: 상단 hero card에 이미지, 상품명, 옵션, 상태, 주요 코드를 배치했다. 하단 SKU 정보, 운영 연결, alias, channel mapping panel의 radius/spacing/heading을 통일했다.
+- Alias 검색: 검색 조건 card와 결과 card를 분리하고, 썸네일, code system badge, matched code copy, 상품명/옵션 위계를 정리했다.
+- Change Requests: read-only placeholder를 더 명확하게 정리하고 새 요청 버튼 disabled 상태를 유지했다.
+
+### 유지한 원칙
+
+- 운영 Supabase 변경 없음.
+- NAS 변경 없음.
+- DB schema/data 변경 없음.
+- API endpoint 변경 없음.
+- master write 기능 추가 없음.
+- change request write 기능 추가 없음.
+- `/api/products/*` 제거 없음.
+- `/product-code/*` 제거 없음.
+- GitHub push / commit / `git add .` 없음.
+
+### 검증 결과
+
+- `npm.cmd run build`: 성공. React Router dependency의 `"use client"` ignore 경고 2건은 기존 non-blocking 경고.
+- 5173 dev server: 기존 실행 중인 Vite 서버가 `http://localhost:5173/products`에 200 응답.
+- Browser 확인:
+  - `/products`: 렌더 확인.
+  - `/products/aliases`: header/search/example/render 확인.
+  - `/products/change-requests`: placeholder와 disabled 새 요청 버튼 확인.
+  - `/products/:skuId`: hero card, SKU 정보, Alias, Channel Mapping panel 확인.
+- SKU 목록 검색:
+  - `1258-1`: card 4건.
+  - `1000-1`: card 1건.
+  - `11258-1`: card 1건.
+- `피어싱`: card 50건.
+- `LOCAL_TEST_PM`: card 2건.
+
+## MakeShop review_required manual matrix export v1 prepared (2026-05-15)
+
+### 현재 판단
+
+MakeShop `auto_confirm v3` local apply 이후 남은 `review_required` 19,408건에 대해서 추가 자동 apply는 금지한다. 다음 단계는 사람이 검수할 수 있는 CSV matrix export다.
+
+사용자 확인 결과:
+
+| 항목 | 값 |
+|---|---:|
+| total rows | 30,587 |
+| already applied MakeShop rows | 11,179 |
+| review_required rows | 19,408 |
+| unapplied auto candidate rows | 0 |
+| existing mapping different SKU | 0 |
+| own_sku_ambiguous | 15,777 |
+| null_key | 2,289 |
+| pattern_unmatched | 732 |
+| own_sku_not_in_alias | 592 |
+| loose_regex_only | 18 |
+
+Ambiguous token scoring 판단:
+
+- strong 자동해소 후보: 0
+- weak top1 후보: 12,585 rows. 자동반영 금지, manual review 우선순위로만 사용.
+- manual review required: 3,211 rows.
+
+`own_sku_not_in_alias` 판단:
+
+- rows: 594 진단 결과가 있었으나, v3 review summary 기준 export는 already-applied overlap을 제외한 `own_sku_not_in_alias` review reason 기준으로 수행한다.
+- distinct own_sku code: 284
+- alias backfill 자동 후보: 0
+- 자동 alias backfill 불가, manual review / alias 후보 목록으로 관리.
+
+### 작성 파일
+
+| 파일 | 목적 |
+|---|---|
+| `sql/export_makeshop_review_manual_matrix_v1.sql` | `/tmp/makeshop_minimal_full.csv`를 v3 기준으로 재분류하고, 이미 apply된 11,179건을 제외한 review 대상만 5개 CSV로 export |
+| `docs/codex_handoff_status.md` | 본 상태 및 실행 명령 기록 |
+
+### Export CSV
+
+| CSV | 대상 |
+|---|---|
+| `/tmp/makeshop_review_ambiguous_weak_top1_matrix.csv` | ambiguous 중 top1 후보가 1개 있으나 strong 조건은 아닌 weak 후보 |
+| `/tmp/makeshop_review_ambiguous_manual_matrix.csv` | ambiguous 중 후보 복수, 동률, 점수 불충분으로 수동 검수 필요한 대상 |
+| `/tmp/makeshop_review_not_in_alias_matrix.csv` | own_sku 후보는 있으나 `code_alias(code_system='own_sku')`에 없는 코드별 대표 row |
+| `/tmp/makeshop_review_null_key_matrix.csv` | product_uid 또는 sto_id가 비어 SKU mapping 제외 후보인 row |
+| `/tmp/makeshop_review_pattern_loose_matrix.csv` | pattern_unmatched 및 loose_regex_only row |
+
+### Safety
+
+- 운영 DB 변경 금지 유지.
+- 로컬 DB 영구 변경 없음.
+- SQL은 `product_ops_test` guard를 포함한다.
+- `BEGIN` / `ROLLBACK` 사용.
+- `CREATE TEMP TABLE`만 사용.
+- persistent `INSERT` / `UPDATE` / `DELETE` / `ALTER` / `DROP` / `TRUNCATE` 없음.
+- review 대상 apply SQL 작성 없음.
+- DDL 적용 없음.
+- 운영 DB / API / Frontend 변경 없음.
+
+### 실행 명령
+
+```powershell
+docker cp .\outputs\makeshop_minimal_full.csv product_ops_test_postgres:/tmp/makeshop_minimal_full.csv
+
+docker cp .\sql\export_makeshop_review_manual_matrix_v1.sql product_ops_test_postgres:/tmp/export_makeshop_review_manual_matrix_v1.sql
+
+docker exec product_ops_test_postgres `
+  psql -U product_ops_tester -d product_ops_test `
+  -v ON_ERROR_STOP=1 `
+  --echo-errors `
+  -f /tmp/export_makeshop_review_manual_matrix_v1.sql 2>&1 |
+  Tee-Object -FilePath .\outputs\export_makeshop_review_manual_matrix_v1_result.txt
+```
+
+### CSV 회수 명령
+
+```powershell
+docker cp product_ops_test_postgres:/tmp/makeshop_review_ambiguous_weak_top1_matrix.csv .\outputs\makeshop_review_ambiguous_weak_top1_matrix.csv
+
+docker cp product_ops_test_postgres:/tmp/makeshop_review_ambiguous_manual_matrix.csv .\outputs\makeshop_review_ambiguous_manual_matrix.csv
+
+docker cp product_ops_test_postgres:/tmp/makeshop_review_not_in_alias_matrix.csv .\outputs\makeshop_review_not_in_alias_matrix.csv
+
+docker cp product_ops_test_postgres:/tmp/makeshop_review_null_key_matrix.csv .\outputs\makeshop_review_null_key_matrix.csv
+
+docker cp product_ops_test_postgres:/tmp/makeshop_review_pattern_loose_matrix.csv .\outputs\makeshop_review_pattern_loose_matrix.csv
+```
+
+### 다음 판단 기준
+
+1. export summary가 기존 진단값과 맞는지 확인한다.
+   - total rows 30,587
+   - already applied 11,179
+   - review_required 19,408
+   - unapplied_auto_candidate 0
+2. weak top1 matrix 12,585건은 자동 apply 후보가 아니라 검수 우선순위 목록으로만 사용한다.
+3. ambiguous manual matrix 3,211건은 candidate option/selfpia alias/token score를 보고 수동 판단 기준을 설계한다.
+4. not_in_alias matrix는 alias 누락 후보 CSV로 관리하되, 자동 alias backfill은 계속 금지한다.
+5. null_key matrix는 SKU mapping 제외 또는 product-level/meta row 여부를 분류한다.
+6. pattern/loose matrix는 regex 보강 가치가 있는 패턴만 별도 진단한다.
+7. review 대상 apply SQL은 별도 승인 전까지 작성하지 않는다.
+
+## Product detail seller code summary UI (2026-05-15)
+
+### 목적
+
+상품 상세 화면에서 `SKU 정보`, `Alias`, `Channel Mapping`으로 분산되어 있던 코드 연결 정보를 사용자 관점의 `판매처별 코드 요약` 표로 먼저 보여주도록 개선했다. raw alias / raw mapping은 삭제하지 않고 하단 보조 정보로 유지했다.
+
+### 수정 파일
+
+- `frontend/admin/src/pages/products/ProductDetailPage.jsx`
+- `frontend/admin/src/styles.css`
+- `docs/product_management_v1_runbook.md`
+- `docs/codex_handoff_status.md`
+
+### 요약표 구성 방식
+
+| 구분 | 판매처 | 상품코드 | 옵션코드 또는 SKU 코드 | 자사코드 | 상태 |
+|---|---|---|---|---|---|
+| 기준 | Sellpia | `selfpia_product_code` | `selfpia_sku_code` | `own_sku` alias 첫 값 | 기준 |
+| 채널 | MakeShop | `seller_product_code` | `channel_sku_code` | `own_sku_code` | 연결됨 |
+| 채널 | Smartstore | smartstore mapping의 `seller_product_code` 또는 없음 | `smartstore_option_no` alias / `channel_sku_code` 또는 없음 | own_sku | 연결됨 / 후보 / 미매핑 |
+| 채널 | 기타 | channel mapping 값 | channel mapping 값 | own_sku_code | 연결됨 |
+
+Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표시한다.
+
+### 기존 표 처리
+
+- 기존 `Alias` 표는 `Raw Alias` 보조 카드로 유지.
+- 기존 `Channel Mapping` 표는 `Raw Channel Mapping` 보조 카드로 유지.
+- 두 raw 표 모두 read-only이며 요약표 산출 근거 확인용이다.
+
+### read-only / safety
+
+- DB schema 변경 없음.
+- API endpoint 변경 없음.
+- local DB 데이터 변경 없음.
+- write 기능 추가 없음.
+- GitHub push / `git add .` / commit 없음.
+- `sku_id` UUID는 요약표에 노출하지 않고 `SKU 정보`의 `내부 ID`로만 작게 표시.
+
+### 검증 결과
+
+- `npm.cmd run build`: 성공. React Router dependency `"use client"` ignore 경고 2건은 기존 non-blocking 경고.
+- Browser 확인:
+  - `1000-3` (`d4c0a5bf-73f1-4203-a6f8-9a27a44f58da`, image): `판매처별 코드 요약`, Sellpia, MakeShop, Smartstore `미매핑`, raw tables 확인.
+  - `1258-1` (`8d76dbe6-31cc-4682-bf34-190d27eaf37a`, image): `판매처별 코드 요약`, Sellpia, MakeShop, Smartstore `미매핑`, raw tables 확인.
+  - `11258-1` (`8f4b3764-0c40-4836-bb60-89e44679b710`, no image): placeholder, `판매처별 코드 요약`, Sellpia, MakeShop, Smartstore `미매핑`, raw tables 확인.
+- 세 샘플 모두 요약표 내 UUID 미노출 확인.

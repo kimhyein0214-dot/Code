@@ -41,7 +41,7 @@ export function CopyButton({ value, label = '복사', title }) {
       type="button"
       onClick={copy}
       disabled={disabled}
-      title={title || (disabled ? '값 없음' : `복사: ${value}`)}
+      title={title || (disabled ? '복사할 값 없음' : `복사: ${value}`)}
       className={className}
       aria-label={`${displayLabel} ${value || ''}`}
     >

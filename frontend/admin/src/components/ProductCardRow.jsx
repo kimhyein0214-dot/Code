@@ -50,6 +50,9 @@ export function ProductCardRow({ product, to }) {
           ]}
         />
       </div>
+      <div className="product-card-actions" aria-hidden="true">
+        <span className="button-subtle detail-button">상세 보기</span>
+      </div>
     </div>
   );
 }

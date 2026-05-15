@@ -714,3 +714,101 @@ Frontend browser check:
 - `/products`, search `11258-1`: 1 card, 0 image tags, 1 placeholder.
 
 Remaining note: in headless Chrome the remote Googleusercontent image did not complete pixel loading during the short check, but the API-provided URL was rendered into the `<img src>` and placeholder fallback behavior remained correct for null images.
+## Admin UI refresh - clean card layout (2026-05-15)
+
+상품관리 v1 admin UI를 read-only 원칙 안에서 "여백, 카드, 정보 위계가 정돈된 관리자 UI" 방향으로 개편했다. 토스 UI를 복제하지 않고, 밝은 회색 배경, 흰 카드, 절제된 파란 강조색, 약한 그림자, 명확한 typography hierarchy 중심으로 정리했다.
+
+변경 범위:
+
+- `frontend/admin/src/styles.css`: layout, sidebar, page header, section card, form, button, chip, badge, thumbnail, list card, detail hero, responsive 스타일 재정리.
+- `frontend/admin/src/components/Layout.jsx`: 사이드바 문구와 read-only banner 정리.
+- `frontend/admin/src/components/ProductCardRow.jsx`: SKU 목록 카드에 thumbnail, 상품명, 옵션, 상태, 주요 코드 chip, 상세 이동 affordance를 한눈에 보이도록 재배치.
+- `frontend/admin/src/components/ProductThumbnail.jsx`: 기존 image/fallback 로직 유지.
+- `frontend/admin/src/components/ProductMetaChips.jsx`: 코드 chip label/copy 문구 정리.
+- `frontend/admin/src/components/CopyButton.jsx`: 깨진 한글 문구를 복구하고 기존 복사 로직 유지.
+- `frontend/admin/src/components/EmptyImagePlaceholder.jsx`: 더 차분한 no image placeholder로 정리.
+- `frontend/admin/src/pages/products/ProductListPage.jsx`: 검색 카드, 예시 chip, 안내 문구, empty/loading/error 문구 정리.
+- `frontend/admin/src/pages/products/ProductDetailPage.jsx`: hero card와 하단 alias/channel mapping panel 문구 및 정보 위계 정리.
+- `frontend/admin/src/pages/products/AliasSearchPage.jsx`: alias 검색 조건 카드와 결과 리스트 카드 위계 정리.
+- `frontend/admin/src/pages/products/ChangeRequestsPlaceholderPage.jsx`: read-only placeholder 문구와 disabled 상태 정리.
+
+변경하지 않은 것:
+
+- API endpoint 변경 없음.
+- `/api/products/*`, `/product-code/*` 제거 없음.
+- DB schema/data 변경 없음.
+- master write / change request write 기능 추가 없음.
+- 운영 Supabase / NAS 변경 없음.
+
+검증 권장:
+
+```powershell
+cd frontend\admin
+npm.cmd run build
+npm.cmd run dev
+```
+
+브라우저 확인:
+
+- `http://localhost:5173/products`
+- `http://localhost:5173/products/aliases`
+- `http://localhost:5173/products/change-requests`
+
+검색어:
+
+- `1258-1`
+- `1000-1`
+- `11258-1`
+- `피어싱`
+- `LOCAL_TEST_PM`
+
+이번 검증 결과:
+
+- `npm.cmd run build`: 성공. React Router dependency의 `"use client"` ignore 경고 2건은 기존 non-blocking 경고.
+- `http://localhost:5173/products`: 렌더 확인.
+- SKU 목록 검색:
+  - `1258-1`: card 4건.
+  - `1000-1`: card 1건.
+  - `11258-1`: card 1건.
+  - `피어싱`: card 50건.
+  - `LOCAL_TEST_PM`: card 2건.
+- `http://localhost:5173/products/aliases`: header/search/example/render 확인.
+- `http://localhost:5173/products/change-requests`: placeholder와 disabled 새 요청 버튼 확인.
+- SKU 상세 직접 확인: `SKU 상세`, hero card, SKU 정보, Alias, Channel Mapping panel 렌더 확인.
+
+## Product detail seller code summary (2026-05-15)
+
+상품 상세 화면에서 사용자가 판매처별 코드 연결 상태를 먼저 볼 수 있도록 `판매처별 코드 요약` 섹션을 추가했다. 기존 raw alias / channel mapping 표는 삭제하지 않고 하단 보조 정보 카드로 유지했다.
+
+구성 방식:
+
+- Sellpia row
+  - 상품코드: `selfpia_product_code`
+  - 옵션코드 또는 SKU 코드: `selfpia_sku_code`
+  - 자사코드: `own_sku` alias 첫 번째 값
+  - 상태: `기준`
+- MakeShop row
+  - `sku_channel_mapping.channel_code = 'makeshop'` row 기준
+  - 상품코드: `seller_product_code`
+  - 옵션코드 또는 SKU 코드: `channel_sku_code`
+  - 자사코드: `own_sku_code`
+  - 상태: `연결됨`
+- Smartstore row
+  - `smartstore_option_no` alias 또는 `channel_code = 'smartstore'` mapping이 있으면 해당 코드 표시
+  - 없으면 옵션코드/SKU 코드 `없음`, 상태 `미매핑`
+- 기타 channel row
+  - MakeShop/Smartstore 외 `channel_code`가 있으면 channel label 기준으로 추가 row 표시
+
+유지 원칙:
+
+- `sku_id` UUID는 `판매처별 코드 요약`에 노출하지 않는다.
+- UUID는 하단 `SKU 정보`의 `내부 ID`로만 작게 표시한다.
+- API endpoint / DB schema / local DB data 변경 없음.
+- raw alias / raw channel mapping은 보조 정보로 유지.
+
+검증:
+
+- `/products/d4c0a5bf-73f1-4203-a6f8-9a27a44f58da` (`1000-3`, image): Sellpia / MakeShop / Smartstore 미매핑 / raw tables 확인.
+- `/products/8d76dbe6-31cc-4682-bf34-190d27eaf37a` (`1258-1`, image): Sellpia / MakeShop / Smartstore 미매핑 / raw tables 확인.
+- `/products/8f4b3764-0c40-4836-bb60-89e44679b710` (`11258-1`, no image): placeholder + Sellpia / MakeShop / Smartstore 미매핑 / raw tables 확인.
+- `npm.cmd run build`: 성공. React Router dependency `"use client"` ignore 경고 2건은 기존 non-blocking 경고.

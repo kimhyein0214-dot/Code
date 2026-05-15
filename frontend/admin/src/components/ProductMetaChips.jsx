@@ -8,8 +8,10 @@ const LABELS = {
   virtual_sku_code: 'Virtual SKU',
   virtual_product_code: 'Virtual Product',
   own_sku_code: 'Own SKU',
-  matched_code_value: 'Matched Code',
-  sku_id: 'SKU ID'
+  smartstore_option_no: '스마트스토어',
+  smartstore_code: '스마트스토어',
+  matched_code_value: 'Matched',
+  sku_id: '내부 ID'
 };
 
 export function ProductMetaChips({ items = [] }) {

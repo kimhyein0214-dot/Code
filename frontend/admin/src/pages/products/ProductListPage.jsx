@@ -4,7 +4,7 @@ import { productsApi } from '../../api/client.js';
 import { ProductCardRow } from '../../components/ProductCardRow.jsx';
 
 const DEFAULT_SEARCH = '1258-1';
-const SEARCH_EXAMPLES = ['1258-1', '실버 기본 바', '피어싱', 'LOCAL_TEST_PM'];
+const SEARCH_EXAMPLES = ['1258-1', '1000-1', '11258-1', '피어싱', 'LOCAL_TEST_PM'];
 
 export function ProductListPage() {
   const [search, setSearch] = useState(DEFAULT_SEARCH);
@@ -32,7 +32,7 @@ export function ProductListPage() {
 
   useEffect(() => {
     load(DEFAULT_SEARCH);
-    // 최초 1회만 기본 검색을 실행한다.
+    // 초기 진입 시 대표 SKU로 목록 UI를 확인한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -46,51 +46,60 @@ export function ProductListPage() {
       <div className="page-header">
         <div>
           <h1>SKU 목록</h1>
-          <p>상품코드 master 기준 read-only 조회 · 최대 50건</p>
+          <p>상품명, 옵션, 주요 코드와 이미지를 한 화면에서 확인하는 read-only 목록입니다.</p>
         </div>
-        <button className="button disabled" disabled title="v1 read-only. master 변경 기능은 비활성화 상태입니다.">
+        <button className="button disabled" disabled title="v1 read-only. master 변경 기능은 비활성화되어 있습니다.">
           Change Request
         </button>
       </div>
 
-      <form
-        className="toolbar product-search-toolbar"
-        onSubmit={(event) => {
-          event.preventDefault();
-          load();
-        }}
-      >
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="상품명 / Selfpia SKU / Virtual SKU 부분 일치"
-          aria-label="SKU 검색"
-        />
-        <button className="button" type="submit" disabled={loading}>
-          {loading ? '조회 중...' : '검색'}
-        </button>
-      </form>
-
-      <div className="examples">
-        <span className="examples-label">검색 예시</span>
-        {SEARCH_EXAMPLES.map((example) => (
-          <button
-            key={example}
-            type="button"
-            className="chip"
-            onClick={() => applyExample(example)}
-          >
-            {example}
+      <section className="section-card" aria-label="SKU 검색">
+        <form
+          className="toolbar product-search-toolbar"
+          onSubmit={(event) => {
+            event.preventDefault();
+            load();
+          }}
+        >
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="상품명 / Selfpia SKU / Virtual SKU / 옵션으로 검색"
+            aria-label="SKU 검색"
+          />
+          <button className="button" type="submit" disabled={loading}>
+            {loading ? '조회 중...' : '검색'}
           </button>
-        ))}
-      </div>
+        </form>
+
+        <div className="examples">
+          <span className="examples-label">예시 검색</span>
+          {SEARCH_EXAMPLES.map((example) => (
+            <button
+              key={example}
+              type="button"
+              className="chip"
+              onClick={() => applyExample(example)}
+            >
+              {example}
+            </button>
+          ))}
+        </div>
+
+        <p className="hint">
+          최대 50건까지 조회하며, 화면의 복사와 상세 이동은 모두 조회 전용 동작입니다.
+        </p>
+      </section>
 
       {error && <div className="notice error">조회 실패: {error}</div>}
       {loading && !error && <div className="notice">상품을 조회하는 중입니다.</div>}
 
       <div className="product-card-list" aria-busy={loading}>
-        {!loading && rows.map((row) => (
-          <ProductCardRow key={row.sku_id} product={row} />
+        {!loading && rows.map((row, index) => (
+          <ProductCardRow
+            key={`${row.sku_id}-${row.selfpia_sku_code || row.virtual_sku_code || index}`}
+            product={row}
+          />
         ))}
         {!loading && rows.length === 0 && (
           <div className="empty-state">
@@ -104,8 +113,7 @@ export function ProductListPage() {
       </div>
 
       <p className="hint">
-        목록은 <code>/api/products/skus?search=...&amp;limit=50</code> 응답을 그대로 사용합니다.
-        현재 단계에서는 이미지 URL을 요청하지 않으므로 모든 상품에 이미지 슬롯 placeholder가 표시됩니다.
+        호출: <code>/api/products/skus?search=...&amp;limit=50</code>. 이미지 URL이 없는 상품은 정돈된 placeholder로 표시합니다.
       </p>
     </section>
   );

@@ -7,7 +7,7 @@ export function Layout({ children }) {
       <aside className="sidebar">
         <div className="brand">
           <strong>Product Ops</strong>
-          <span>Admin · v1 read-only</span>
+          <span>Admin v1 · read-only</span>
         </div>
         <nav className="nav">
           <NavLink to="/products" end>SKU 목록</NavLink>
@@ -15,14 +15,14 @@ export function Layout({ children }) {
           <NavLink to="/products/change-requests">Change Requests</NavLink>
         </nav>
         <div className="sidebar-foot">
-          <p>본 화면은 Product_code master 의 read-only 조회만 제공합니다.</p>
-          <p>master / alias / channel 변경은 v1 범위 밖입니다.</p>
+          <p>Product_code master는 조회 전용으로만 노출합니다.</p>
+          <p>master, alias, channel 변경은 v1 범위 밖입니다.</p>
         </div>
       </aside>
       <main className="main">
         <div className="env-banner" role="status">
           <span className="env-banner-pill">READ-ONLY</span>
-          <span>Product Management v1 — 데이터 변경 기능은 모두 비활성 상태입니다.</span>
+          <span>Product Management v1은 실제 상품 데이터를 조회하지만, 데이터 변경 기능은 비활성화되어 있습니다.</span>
         </div>
         {children}
       </main>

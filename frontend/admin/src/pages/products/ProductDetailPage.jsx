@@ -7,6 +7,131 @@ import { CopyButton } from '../../components/CopyButton.jsx';
 import { ProductMetaChips } from '../../components/ProductMetaChips.jsx';
 import { ProductThumbnail } from '../../components/ProductThumbnail.jsx';
 
+function uniqueValues(values) {
+  return [...new Set(values.filter((value) => value !== undefined && value !== null && value !== ''))];
+}
+
+function aliasValues(aliases, codeSystem) {
+  return uniqueValues(
+    aliases
+      .filter((alias) => alias.code_system === codeSystem)
+      .map((alias) => alias.code_value)
+  );
+}
+
+function smartstoreChannelCodes(mappings) {
+  return uniqueValues(
+    mappings
+      .filter((mapping) => mapping.channel_code === 'smartstore')
+      .flatMap((mapping) => [mapping.channel_sku_code, mapping.seller_product_code])
+  );
+}
+
+function channelLabel(channelCode) {
+  const labels = {
+    makeshop: 'MakeShop',
+    smartstore: 'Smartstore',
+    ably: 'Ably',
+    playauto: 'Playauto'
+  };
+  return labels[channelCode] || channelCode;
+}
+
+function CodeValue({ value, muted = false }) {
+  if (!value) {
+    return <span className="muted">없음</span>;
+  }
+
+  return (
+    <div className="cell-code">
+      <span className={`mono ellipsis${muted ? ' muted' : ''}`} title={String(value)}>{value}</span>
+      <CopyButton value={value} label="복사" />
+    </div>
+  );
+}
+
+function MappingStatus({ status }) {
+  const className = {
+    기준: 'status-active',
+    연결됨: 'status-active',
+    후보: 'status-pending',
+    미매핑: 'status-inactive'
+  }[status] || '';
+  return <span className={`status-badge ${className}`}>{status}</span>;
+}
+
+function buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes }) {
+  const rows = [
+    {
+      key: 'selfpia',
+      group: '기준',
+      seller: 'Sellpia',
+      productCode: sku.selfpia_product_code,
+      optionCode: sku.selfpia_sku_code,
+      ownSkuCode: ownSkuCodes[0],
+      status: '기준',
+      note: 'Product_code 기준 SKU'
+    }
+  ];
+
+  mappings
+    .filter((mapping) => mapping.channel_code !== 'smartstore')
+    .forEach((mapping) => {
+      rows.push({
+        key: `channel-${mapping.id}`,
+        group: '채널',
+        seller: channelLabel(mapping.channel_code),
+        productCode: mapping.seller_product_code,
+        optionCode: mapping.channel_sku_code,
+        ownSkuCode: mapping.own_sku_code,
+        status: '연결됨',
+        note: mapping.is_primary ? 'primary mapping' : 'channel mapping'
+      });
+    });
+
+  const smartstoreMappings = mappings.filter((mapping) => mapping.channel_code === 'smartstore');
+  if (smartstoreAliasCodes.length > 0 || smartstoreMappings.length > 0) {
+    smartstoreMappings.forEach((mapping, index) => {
+      rows.push({
+        key: `smartstore-${mapping.id || index}`,
+        group: '채널',
+        seller: 'Smartstore',
+        productCode: mapping.seller_product_code,
+        optionCode: mapping.channel_sku_code || smartstoreAliasCodes[index] || smartstoreAliasCodes[0],
+        ownSkuCode: mapping.own_sku_code || ownSkuCodes[0],
+        status: '연결됨',
+        note: 'smartstore channel mapping'
+      });
+    });
+
+    if (smartstoreMappings.length === 0) {
+      rows.push({
+        key: 'smartstore-alias',
+        group: '채널',
+        seller: 'Smartstore',
+        productCode: '',
+        optionCode: smartstoreAliasCodes.join(', '),
+        ownSkuCode: ownSkuCodes[0],
+        status: '후보',
+        note: 'smartstore_option_no alias'
+      });
+    }
+  } else {
+    rows.push({
+      key: 'smartstore-unmapped',
+      group: '채널',
+      seller: 'Smartstore',
+      productCode: '',
+      optionCode: '',
+      ownSkuCode: ownSkuCodes[0],
+      status: '미매핑',
+      note: 'smartstore_option_no alias 또는 channel mapping 없음'
+    });
+  }
+
+  return rows;
+}
+
 export function ProductDetailPage() {
   const { skuId } = useParams();
   const [sku, setSku] = useState(null);
@@ -56,6 +181,10 @@ export function ProductDetailPage() {
 
   const aliases = sku.aliases || [];
   const mappings = sku.channel_mappings || [];
+  const ownSkuCodes = aliasValues(aliases, 'own_sku');
+  const smartstoreAliasCodes = aliasValues(aliases, 'smartstore_option_no');
+  const smartstoreCodes = uniqueValues([...smartstoreAliasCodes, ...smartstoreChannelCodes(mappings)]);
+  const codeSummaryRows = buildCodeSummaryRows({ sku, mappings, ownSkuCodes, smartstoreAliasCodes });
 
   return (
     <section className="page">
@@ -63,15 +192,15 @@ export function ProductDetailPage() {
         <div>
           <Link className="back-link" to="/products">← SKU 목록</Link>
           <h1>SKU 상세</h1>
-          <p>상품 이미지 슬롯과 코드 정보를 함께 확인하는 read-only preview입니다.</p>
+          <p>대표 이미지, 주요 코드, alias와 channel mapping을 read-only로 확인합니다.</p>
         </div>
-        <button className="button disabled" disabled title="v1 read-only. master 변경 기능은 비활성화 상태입니다.">
+        <button className="button disabled" disabled title="v1 read-only. master 변경 기능은 비활성화되어 있습니다.">
           Change Request
         </button>
       </div>
 
       <div className="readonly-banner" role="note">
-        이 상세 화면은 read-only입니다. master, alias, channel mapping 추가/수정/삭제 UI는 v1 범위 밖입니다.
+        상세 화면은 조회 전용입니다. master, alias, channel mapping 추가·수정·삭제 UI는 v1 범위 밖입니다.
       </div>
 
       <section className="product-detail-hero panel">
@@ -94,9 +223,48 @@ export function ProductDetailPage() {
               { key: 'selfpia_product_code', value: sku.selfpia_product_code },
               { key: 'virtual_sku_code', value: sku.virtual_sku_code },
               { key: 'virtual_product_code', value: sku.virtual_product_code },
-              { key: 'sku_id', value: sku.sku_id }
+              { key: 'own_sku_code', value: ownSkuCodes[0] },
+              { key: 'smartstore_code', value: smartstoreCodes[0] }
             ]}
           />
+        </div>
+      </section>
+
+      <section className="panel code-summary-panel">
+        <div className="panel-header">
+          <div>
+            <h2>판매처별 코드 요약</h2>
+            <p className="hint">이 SKU가 기준 코드와 판매처별 코드로 어떻게 연결되어 있는지 먼저 확인합니다.</p>
+          </div>
+          <span className="muted">{codeSummaryRows.length}개 구분</span>
+        </div>
+        <div className="table-wrap code-summary-wrap">
+          <table className="code-summary-table">
+            <thead>
+              <tr>
+                <th style={{ width: 88 }}>구분</th>
+                <th style={{ width: 130 }}>판매처</th>
+                <th>상품코드</th>
+                <th>옵션코드 또는 SKU 코드</th>
+                <th>자사코드</th>
+                <th style={{ width: 100 }}>상태</th>
+                <th>비고</th>
+              </tr>
+            </thead>
+            <tbody>
+              {codeSummaryRows.map((row) => (
+                <tr key={row.key}>
+                  <td><span className="pill pill-off">{row.group}</span></td>
+                  <td><strong>{row.seller}</strong></td>
+                  <td><CodeValue value={row.productCode} /></td>
+                  <td><CodeValue value={row.optionCode} /></td>
+                  <td><CodeValue value={row.ownSkuCode} /></td>
+                  <td><MappingStatus status={row.status} /></td>
+                  <td className="muted">{row.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -104,10 +272,17 @@ export function ProductDetailPage() {
         <section className="panel">
           <h2>SKU 정보</h2>
           <dl className="definition-list">
-            <dt>SKU ID</dt>
+            <dt>Selfpia SKU</dt>
             <dd>
               <div className="cell-code">
-                <span className="mono ellipsis" title={sku.sku_id}>{sku.sku_id}</span>
+                <span className="mono ellipsis" title={sku.selfpia_sku_code}>{sku.selfpia_sku_code || '-'}</span>
+                {sku.selfpia_sku_code && <CopyButton value={sku.selfpia_sku_code} label="복사" />}
+              </div>
+            </dd>
+            <dt>내부 ID</dt>
+            <dd>
+              <div className="cell-code">
+                <span className="mono ellipsis muted" title={sku.sku_id}>{sku.sku_id}</span>
                 <CopyButton value={sku.sku_id} label="복사" />
               </div>
             </dd>
@@ -134,7 +309,7 @@ export function ProductDetailPage() {
 
         <section className="panel">
           <h2>운영 연결</h2>
-          <p className="hint">아래 링크는 read-only 운영 API입니다. 현재 화면에서는 master 변경 요청을 생성하지 않습니다.</p>
+          <p className="hint">아래 링크는 read-only 운영 API입니다. 이 화면에서는 master 변경 요청을 생성하지 않습니다.</p>
           <div className="link-list">
             <a href="http://localhost:8080/mapping/own-sku/ambiguous" target="_blank" rel="noreferrer">
               모호 매핑 API 열기
@@ -146,9 +321,12 @@ export function ProductDetailPage() {
         </section>
       </div>
 
-      <section className="panel">
+      <section className="panel raw-data-panel">
         <div className="panel-header">
-          <h2>Alias</h2>
+          <div>
+            <h2>Raw Alias</h2>
+            <p className="hint">요약표 산출에 사용한 원본 alias입니다.</p>
+          </div>
           <span className="muted">{aliases.length}건</span>
         </div>
         <div className="table-wrap">
@@ -187,9 +365,12 @@ export function ProductDetailPage() {
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel raw-data-panel">
         <div className="panel-header">
-          <h2>Channel Mapping</h2>
+          <div>
+            <h2>Raw Channel Mapping</h2>
+            <p className="hint">요약표 산출에 사용한 판매처 mapping 원본입니다.</p>
+          </div>
           <span className="muted">{mappings.length}건</span>
         </div>
         <div className="table-wrap">
