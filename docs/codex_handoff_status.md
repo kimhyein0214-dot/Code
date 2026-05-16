@@ -1969,12 +1969,15 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 - `4cfed27` Add general SQL validation and cross mapping checks
 - `082608b` Add local test seed SQL fixtures
 - `b5571d4` Add NAS PostgreSQL schema drafts
+- `703859d` Add price inventory export design
 
 ### 현재 안전 상태
 
 - 큰일 난 상태 아님.
 - 전체 파일/Git 상태 정리는 약 90~95% 완료.
 - 프론트 / Smartstore / MakeShop / product_image / local_data / general validation / seed / NAS schema draft는 각각 분리 커밋 완료.
+- 가격/재고/export 설계 문서 작성 및 문서 단독 커밋 완료.
+- 설계 문서: `docs/price_inventory_export_design_v1.md`
 - `backups/`, `__pycache__/`, `*.pyc` ignore 규칙 반영 완료.
 - GitHub push 없음.
 
@@ -1985,6 +1988,7 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 - SQL 실행 없음.
 - DB apply 없음.
 - DDL 실행 없음.
+- 가격/재고/export 설계는 문서 작업만 수행했으며 DB/API/Frontend 변경 없음.
 - apply SQL과 local schema patch/test SQL은 계속 보류.
 
 ### 남은 보류 파일
@@ -2001,8 +2005,8 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 ### 다음 작업 순서
 
 1. 이 전체 진행상황 문서 정리분을 검토하고, 문서 단독 커밋 여부를 결정한다.
-2. 이후 MakeShop 추가 apply 여부를 별도 판단한다.
-3. 가격/재고/export 설계는 DB 적용과 분리해 별도 계획으로 검토한다.
+2. 가격/재고/export 다음 단계로 판매처별 실제 업로드 양식을 수집하고 필드 매핑표를 작성한다.
+3. 이후 MakeShop 추가 apply 여부를 별도 판단한다.
 4. apply/schema/local patch 파일은 실행 전 목적, 대상 DB, rollback/recovery 절차를 다시 확인한다.
 
 ### 절대 금지사항
