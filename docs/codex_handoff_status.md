@@ -1953,6 +1953,48 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 - write 기능 추가 없음.
 - GitHub push / `git add .` / commit 없음.
 
+## MakeShop weak_top1 local apply PASS (2026-05-16)
+
+### 완료 상태
+
+로컬 Docker PostgreSQL `product_ops_test` DB에서 MakeShop `weak_top1 strong_candidate` 6,389건 apply 및 postcheck가 `OVERALL PASS`로 확인됐다.
+
+상세 결과 문서: `docs/makeshop_weak_top1_apply_result.md`
+
+| 항목 | 값 |
+|---|---:|
+| target table | `product_code.sku_channel_mapping` |
+| channel_code | `makeshop` |
+| source rows | 6,389 |
+| inserted rows | 6,389 |
+| delta | 6,389 |
+| auto_confirm v3 유지 count | 11,179 |
+| weak_top1 rows after | 6,389 |
+| MakeShop local mapping total | 17,568 |
+| apply final verdict | `OVERALL PASS` |
+| postcheck final verdict | `OVERALL PASS` |
+
+백업:
+
+- `backups/product_ops_test_before_makeshop_weak_top1_20260516.dump`
+- format: `pg_dump -Fc`
+- size: 15,632,059 bytes
+
+안전 상태:
+
+- 변경된 것은 local Docker PostgreSQL `product_ops_test` DB의 `product_code.sku_channel_mapping`뿐이다.
+- 운영 Supabase 변경 없음.
+- NAS PostgreSQL 변경 없음.
+- 원격 DB 접근 없음.
+- postcheck SQL은 read-only 검증 후 `ROLLBACK`으로 종료됐다.
+- `review_required`, `ambiguous`, `manual review` 대상은 계속 자동 apply 금지다.
+
+다음 단계:
+
+1. `docs/makeshop_weak_top1_apply_result.md` 결과 문서를 검토한다.
+2. `sql/apply_makeshop_weak_top1_strong_candidate.sql`, `sql/postcheck_makeshop_weak_top1_strong_candidate.sql`, 결과 문서 커밋 여부를 판단한다.
+3. 남은 MakeShop review 대상은 별도 수동 검수 workflow로 유지한다.
+
 ## 전체 Git 정리 현황 (2026-05-16)
 
 ### 완료된 커밋
@@ -1985,11 +2027,12 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 
 - 운영 Supabase 변경 없음.
 - NAS PostgreSQL 변경 없음.
-- SQL 실행 없음.
-- DB apply 없음.
+- 2026-05-16 MakeShop weak_top1 6,389건은 로컬 Docker PostgreSQL `product_ops_test`에만 apply 완료.
+- 운영/원격 DB SQL 실행 없음.
+- 운영/원격 DB apply 없음.
 - DDL 실행 없음.
 - 가격/재고/export 설계는 문서 작업만 수행했으며 DB/API/Frontend 변경 없음.
-- apply SQL과 local schema patch/test SQL은 계속 보류.
+- 남은 apply SQL과 local schema patch/test SQL은 계속 보류.
 
 ### 남은 보류 파일
 
@@ -2002,6 +2045,13 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 - `sql/local_schema_apply_test.sql`
 - `sql/schema_local_patch_product_image.sql`
 
+### 이번 MakeShop weak_top1 결과 커밋 후보
+
+- `docs/codex_handoff_status.md`
+- `docs/makeshop_weak_top1_apply_result.md`
+- `sql/apply_makeshop_weak_top1_strong_candidate.sql`
+- `sql/postcheck_makeshop_weak_top1_strong_candidate.sql`
+
 ### 다음 작업 순서
 
 1. 이 전체 진행상황 문서 정리분을 검토하고, 문서 단독 커밋 여부를 결정한다.
@@ -2013,8 +2063,8 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 
 - `git add .` 금지.
 - 사용자 승인 전 commit/push 금지.
-- SQL 실행 금지.
-- DB apply 금지.
+- 추가 SQL 실행 금지.
+- 추가 DB apply 금지.
 - DDL 실행 금지.
 - 운영 Supabase 변경 금지.
 - NAS PostgreSQL 변경 금지.
