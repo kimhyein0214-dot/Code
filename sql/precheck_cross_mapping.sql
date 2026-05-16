@@ -1,0 +1,186 @@
+-- =============================================================================
+-- precheck_cross_mapping.sql
+-- 목적: 피킹시스템 ↔ 상품코드 DB 의 연결률(매칭률) 사전조사
+-- 주의:
+--   * 두 DB가 별도 Supabase project이므로 단일 SQL 한 번으로 JOIN 불가.
+--   * 본 파일은 (A) 상품코드 DB 에서 키 목록 EXPORT,
+--                (B) 피킹시스템 DB 로 IMPORT 또는 임시 staging 테이블 적재,
+--                (C) 매칭률 계산 의 3단계 절차를 가정한 SELECT 템플릿입니다.
+--   * (B) 단계의 임시 staging 은 별도 분석용 DB 또는 로컬 PostgreSQL 에 만들고,
+--     운영 DB 에는 절대 CREATE 하지 마세요.
+-- =============================================================================
+
+-- ============================================================
+-- STEP A. 상품코드 DB에서 키 후보를 EXPORT 용으로 SELECT
+-- (실행: 상품코드 Supabase 에서 실행 → CSV 다운로드)
+-- 실제 테이블/컬럼명은 precheck_product_code_inventory.sql [P-10] 결과로 치환.
+-- ============================================================
+-- 예시 (master 테이블이 public.sku_master 라고 가정):
+--
+-- SELECT
+--   selfpia_sku_code,
+--   selfpia_product_code,
+--   virtual_sku_code,
+--   channel_sku_code,
+--   seller_product_code
+-- FROM public.sku_master
+-- WHERE selfpia_sku_code IS NOT NULL
+--    OR selfpia_product_code IS NOT NULL
+--    OR virtual_sku_code IS NOT NULL
+--    OR channel_sku_code IS NOT NULL
+--    OR seller_product_code IS NOT NULL;
+-- ============================================================
+
+-- ============================================================
+-- STEP B. 분석용 staging 에 적재 (운영 DB 아님!)
+-- 별도 로컬 PostgreSQL 또는 NAS 검증 DB 에 임시 테이블 생성.
+-- (이 파일은 SELECT-only 정책상 DDL 을 실행하지 않습니다. 참고용 주석으로만 남김.)
+-- ============================================================
+-- -- 로컬 검증 DB 에서만 실행:
+-- -- CREATE TEMP TABLE stg_pc_keys (
+-- --   selfpia_sku_code     text,
+-- --   selfpia_product_code text,
+-- --   virtual_sku_code     text,
+-- --   channel_sku_code     text,
+-- --   seller_product_code  text
+-- -- );
+-- -- \COPY stg_pc_keys FROM 'pc_keys.csv' WITH (FORMAT csv, HEADER true);
+
+-- ============================================================
+-- STEP C-1. 피킹시스템 DB 단독: 주문상품 키별 NULL/Distinct 분포
+-- (피킹시스템 Supabase 에서 실행. 실제 테이블/컬럼명 치환 필요.)
+-- ============================================================
+-- SELECT
+--   count(*)                                 AS total_lines,
+--   count(selfpia_sku_code)                  AS sku_filled,
+--   count(DISTINCT selfpia_sku_code)         AS sku_distinct,
+--   count(selfpia_product_code)              AS pcode_filled,
+--   count(DISTINCT selfpia_product_code)     AS pcode_distinct,
+--   count(virtual_sku_code)                  AS vsku_filled,
+--   count(DISTINCT virtual_sku_code)         AS vsku_distinct,
+--   count(channel_sku_code)                  AS csku_filled,
+--   count(DISTINCT channel_sku_code)         AS csku_distinct,
+--   count(seller_product_code)               AS spcode_filled,
+--   count(DISTINCT seller_product_code)      AS spcode_distinct
+-- FROM public.order_items;
+
+-- ============================================================
+-- STEP C-2. (분석 DB) 매칭률 계산
+-- 피킹시스템 order_items 도 같은 분석 DB 에 stg_pk_items 로 적재했다고 가정.
+-- 키 우선순위: selfpia_sku_code → selfpia_product_code → channel_sku_code → seller_product_code → virtual_sku_code
+-- ============================================================
+-- WITH joined AS (
+--   SELECT
+--     oi.*,
+--     pc.selfpia_sku_code     AS m_sku,
+--     pc.selfpia_product_code AS m_pcode,
+--     CASE
+--       WHEN pc.selfpia_sku_code     IS NOT NULL THEN 'selfpia_sku_code'
+--       WHEN pc.selfpia_product_code IS NOT NULL THEN 'selfpia_product_code'
+--       WHEN pc.channel_sku_code     IS NOT NULL THEN 'channel_sku_code'
+--       WHEN pc.seller_product_code  IS NOT NULL THEN 'seller_product_code'
+--       WHEN pc.virtual_sku_code     IS NOT NULL THEN 'virtual_sku_code'
+--       ELSE NULL
+--     END AS matched_by
+--   FROM stg_pk_items oi
+--   LEFT JOIN stg_pc_keys pc
+--     ON  (oi.selfpia_sku_code     IS NOT NULL AND oi.selfpia_sku_code     = pc.selfpia_sku_code)
+--     OR  (oi.selfpia_product_code IS NOT NULL AND oi.selfpia_product_code = pc.selfpia_product_code)
+--     OR  (oi.channel_sku_code     IS NOT NULL AND oi.channel_sku_code     = pc.channel_sku_code)
+--     OR  (oi.seller_product_code  IS NOT NULL AND oi.seller_product_code  = pc.seller_product_code)
+--     OR  (oi.virtual_sku_code     IS NOT NULL AND oi.virtual_sku_code     = pc.virtual_sku_code)
+-- )
+-- SELECT
+--   count(*)                                                       AS total_lines,
+--   count(*) FILTER (WHERE matched_by IS NOT NULL)                 AS matched_lines,
+--   round(100.0 * count(*) FILTER (WHERE matched_by IS NOT NULL)
+--               / NULLIF(count(*),0), 2)                           AS match_rate_pct,
+--   count(*) FILTER (WHERE matched_by = 'selfpia_sku_code')        AS by_sku,
+--   count(*) FILTER (WHERE matched_by = 'selfpia_product_code')    AS by_pcode,
+--   count(*) FILTER (WHERE matched_by = 'channel_sku_code')        AS by_csku,
+--   count(*) FILTER (WHERE matched_by = 'seller_product_code')     AS by_spcode,
+--   count(*) FILTER (WHERE matched_by = 'virtual_sku_code')        AS by_vsku,
+--   count(*) FILTER (WHERE matched_by IS NULL)                     AS unmatched_lines
+-- FROM joined;
+
+-- ============================================================
+-- STEP C-3. 미매칭 sample (어떤 SKU가 master에 없는지)
+-- ============================================================
+-- SELECT
+--   oi.selfpia_sku_code,
+--   oi.selfpia_product_code,
+--   oi.channel_sku_code,
+--   oi.seller_product_code,
+--   oi.virtual_sku_code,
+--   count(*) AS occurrences
+-- FROM stg_pk_items oi
+-- LEFT JOIN stg_pc_keys pc
+--   ON  (oi.selfpia_sku_code     IS NOT NULL AND oi.selfpia_sku_code     = pc.selfpia_sku_code)
+--   OR  (oi.selfpia_product_code IS NOT NULL AND oi.selfpia_product_code = pc.selfpia_product_code)
+--   OR  (oi.channel_sku_code     IS NOT NULL AND oi.channel_sku_code     = pc.channel_sku_code)
+--   OR  (oi.seller_product_code  IS NOT NULL AND oi.seller_product_code  = pc.seller_product_code)
+--   OR  (oi.virtual_sku_code     IS NOT NULL AND oi.virtual_sku_code     = pc.virtual_sku_code)
+-- WHERE pc.selfpia_sku_code IS NULL
+--   AND pc.selfpia_product_code IS NULL
+--   AND pc.channel_sku_code IS NULL
+--   AND pc.seller_product_code IS NULL
+--   AND pc.virtual_sku_code IS NULL
+-- GROUP BY 1,2,3,4,5
+-- ORDER BY occurrences DESC
+-- LIMIT 100;
+
+-- ============================================================
+-- STEP C-4. 중복 매칭 sample (같은 주문 SKU가 master 여러 행에 매칭되는 경우)
+-- ============================================================
+-- WITH per_line AS (
+--   SELECT
+--     oi.ctid AS pk_line_ctid,                -- staging staging 식별자
+--     oi.selfpia_sku_code,
+--     oi.channel_sku_code,
+--     oi.seller_product_code,
+--     pc.selfpia_sku_code     AS m_sku,
+--     pc.selfpia_product_code AS m_pcode
+--   FROM stg_pk_items oi
+--   JOIN stg_pc_keys pc
+--     ON  (oi.selfpia_sku_code     IS NOT NULL AND oi.selfpia_sku_code     = pc.selfpia_sku_code)
+--     OR  (oi.channel_sku_code     IS NOT NULL AND oi.channel_sku_code     = pc.channel_sku_code)
+--     OR  (oi.seller_product_code  IS NOT NULL AND oi.seller_product_code  = pc.seller_product_code)
+-- )
+-- SELECT pk_line_ctid,
+--        count(*) AS match_count,
+--        string_agg(DISTINCT m_sku, ', ')   AS matched_skus,
+--        string_agg(DISTINCT m_pcode, ', ') AS matched_pcodes
+-- FROM per_line
+-- GROUP BY pk_line_ctid
+-- HAVING count(*) > 1
+-- ORDER BY match_count DESC
+-- LIMIT 50;
+
+-- ============================================================
+-- STEP C-5. master 내부 중복 키 (운영 master 자체의 데이터 품질 점검)
+-- 상품코드 DB 에서 단독 실행 가능 (테이블명 치환).
+-- ============================================================
+-- SELECT selfpia_sku_code, count(*) AS n
+-- FROM public.sku_master
+-- WHERE selfpia_sku_code IS NOT NULL
+-- GROUP BY 1
+-- HAVING count(*) > 1
+-- ORDER BY n DESC
+-- LIMIT 50;
+--
+-- SELECT channel_sku_code, count(*) AS n
+-- FROM public.sku_master
+-- WHERE channel_sku_code IS NOT NULL
+-- GROUP BY 1
+-- HAVING count(*) > 1
+-- ORDER BY n DESC
+-- LIMIT 50;
+
+-- ============================================================
+-- STEP D. (옵션) Supabase Foreign Data Wrapper 로 직접 JOIN 시도
+-- 두 project가 같은 region이면 postgres_fdw 로 임시 서버 등록 후 JOIN 가능.
+-- 본 사전조사에서는 권한/네트워크 검토만 권장. 실제 설정 금지.
+-- 참고 명령 (실행 X):
+--   -- CREATE EXTENSION IF NOT EXISTS postgres_fdw;   -- 권한 필요
+--   -- CREATE SERVER pc_srv FOREIGN DATA WRAPPER postgres_fdw ...
+-- ============================================================
