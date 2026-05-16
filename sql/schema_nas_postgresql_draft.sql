@@ -1,0 +1,218 @@
+-- =============================================================================
+-- schema_nas_postgresql_draft.sql
+-- 대상: NAS PostgreSQL (Synology) — 통합 운영용
+-- 목적: 통합 schema 구조 초안 (검토용 DDL)
+-- 중요:
+--   * 본 파일은 *검토용 초안* 입니다. 실행하지 마세요.
+--   * 사전조사 [P-*][K-*] 결과로 실 컬럼 dtype/길이/제약을 채워야 함.
+--   * 운영 적용은 별도 PR / 별도 작업 일정에서 수행.
+-- 분리 schema:
+--   product_code : 상품코드 master (기준 데이터)
+--   picking      : 주문/피킹 운영
+--   inspection   : 검품
+--   cs           : CS / 클레임 / 반품 / 교환
+--   audit        : 변경 이력
+--   stg          : 일회성 staging (ETL)
+-- =============================================================================
+
+-- ============================================================
+-- [0] role / schema 설계 (실행 X. 운영 적용 시 별도 절차)
+-- ============================================================
+-- CREATE ROLE app_api    LOGIN PASSWORD 'CHANGE_ME' NOINHERIT;  -- Docker API 서버 전용
+-- CREATE ROLE app_ro     LOGIN PASSWORD 'CHANGE_ME' NOINHERIT;  -- 분석/리포트용 read-only
+-- CREATE ROLE app_etl    LOGIN PASSWORD 'CHANGE_ME' NOINHERIT;  -- 마이그레이션/ETL 전용
+-- CREATE ROLE app_admin  LOGIN PASSWORD 'CHANGE_ME' NOINHERIT;  -- DBA / 스키마 변경
+--
+-- CREATE SCHEMA IF NOT EXISTS product_code AUTHORIZATION app_admin;
+-- CREATE SCHEMA IF NOT EXISTS picking      AUTHORIZATION app_admin;
+-- CREATE SCHEMA IF NOT EXISTS inspection   AUTHORIZATION app_admin;
+-- CREATE SCHEMA IF NOT EXISTS cs           AUTHORIZATION app_admin;
+-- CREATE SCHEMA IF NOT EXISTS audit        AUTHORIZATION app_admin;
+-- CREATE SCHEMA IF NOT EXISTS stg          AUTHORIZATION app_etl;
+
+-- ============================================================
+-- [1] product_code : SKU master (기준 데이터)
+-- ============================================================
+-- 한 행 = 자체 관리 단일 SKU (셀피아 기준)
+-- selfpia_sku_code 가 시스템 단일 master 키.
+-- 외부 채널 키는 매핑 테이블로 분리해 다대일/다대다 표현 가능.
+
+-- CREATE TABLE product_code.sku_master (
+--   selfpia_sku_code       text        PRIMARY KEY,
+--   selfpia_product_code   text        NOT NULL,
+--   virtual_sku_code       text,
+--   product_name           text        NOT NULL,
+--   brand                  text,
+--   category               text,
+--   option_name            text,
+--   barcode                text,
+--   is_active              boolean     NOT NULL DEFAULT true,
+--   created_at             timestamptz NOT NULL DEFAULT now(),
+--   updated_at             timestamptz NOT NULL DEFAULT now()
+-- );
+-- CREATE INDEX ix_sku_master_pcode    ON product_code.sku_master (selfpia_product_code);
+-- CREATE INDEX ix_sku_master_vsku     ON product_code.sku_master (virtual_sku_code);
+-- CREATE INDEX ix_sku_master_barcode  ON product_code.sku_master (barcode);
+
+-- 채널별 키 매핑 (한 SKU에 여러 채널 SKU가 매핑되는 케이스 지원)
+-- CREATE TABLE product_code.sku_channel_mapping (
+--   id                      bigserial PRIMARY KEY,
+--   selfpia_sku_code        text NOT NULL REFERENCES product_code.sku_master(selfpia_sku_code) ON UPDATE CASCADE ON DELETE RESTRICT,
+--   channel_code            text NOT NULL,           -- 예: 'naver','coupang','11st','smartstore'
+--   channel_sku_code        text,
+--   seller_product_code     text,
+--   is_primary              boolean NOT NULL DEFAULT false,
+--   valid_from              date,
+--   valid_to                date,
+--   created_at              timestamptz NOT NULL DEFAULT now(),
+--   updated_at              timestamptz NOT NULL DEFAULT now(),
+--   UNIQUE (channel_code, channel_sku_code),
+--   UNIQUE (channel_code, seller_product_code)
+-- );
+-- CREATE INDEX ix_scm_master ON product_code.sku_channel_mapping (selfpia_sku_code);
+
+-- 세트/번들 (구성품)
+-- CREATE TABLE product_code.sku_bundle (
+--   parent_sku   text NOT NULL REFERENCES product_code.sku_master(selfpia_sku_code) ON UPDATE CASCADE,
+--   child_sku    text NOT NULL REFERENCES product_code.sku_master(selfpia_sku_code) ON UPDATE CASCADE,
+--   quantity     int  NOT NULL CHECK (quantity > 0),
+--   PRIMARY KEY (parent_sku, child_sku)
+-- );
+
+-- ============================================================
+-- [2] picking : 주문 / 피킹 운영
+-- ============================================================
+-- 한 행 = 한 주문 / 한 피킹 라인.
+-- order_items.selfpia_sku_code 는 master FK 로 강제(매핑 안 된 주문은 staging에서 보류).
+
+-- CREATE TABLE picking.orders (
+--   order_id            text         PRIMARY KEY,        -- 외부 채널 주문번호 또는 내부 발주번호
+--   channel_code        text         NOT NULL,
+--   buyer_name          text,
+--   buyer_phone         text,
+--   buyer_address       text,
+--   ordered_at          timestamptz  NOT NULL,
+--   status              text         NOT NULL,           -- 'new','picking','picked','shipped','cancelled', ...
+--   memo                text,
+--   created_at          timestamptz  NOT NULL DEFAULT now(),
+--   updated_at          timestamptz  NOT NULL DEFAULT now()
+-- );
+-- CREATE INDEX ix_orders_status      ON picking.orders (status);
+-- CREATE INDEX ix_orders_ordered_at  ON picking.orders (ordered_at);
+
+-- CREATE TABLE picking.order_items (
+--   order_item_id        bigserial   PRIMARY KEY,
+--   order_id             text        NOT NULL REFERENCES picking.orders(order_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+--   line_no              int         NOT NULL,
+--   selfpia_sku_code     text        NOT NULL REFERENCES product_code.sku_master(selfpia_sku_code) ON UPDATE CASCADE ON DELETE RESTRICT,
+--   raw_channel_sku      text,      -- 원본 채널 SKU (감사 추적용)
+--   qty_ordered          int         NOT NULL CHECK (qty_ordered > 0),
+--   unit_price           numeric(12,2),
+--   created_at           timestamptz NOT NULL DEFAULT now(),
+--   UNIQUE (order_id, line_no)
+-- );
+-- CREATE INDEX ix_order_items_sku ON picking.order_items (selfpia_sku_code);
+
+-- CREATE TABLE picking.picking_tasks (
+--   task_id              bigserial   PRIMARY KEY,
+--   order_item_id        bigint      NOT NULL REFERENCES picking.order_items(order_item_id) ON DELETE RESTRICT,
+--   assigned_to          text,                 -- worker code
+--   status               text        NOT NULL, -- 'queued','in_progress','picked','exception'
+--   started_at           timestamptz,
+--   completed_at         timestamptz,
+--   exception_reason     text,
+--   created_at           timestamptz NOT NULL DEFAULT now(),
+--   updated_at           timestamptz NOT NULL DEFAULT now()
+-- );
+-- CREATE INDEX ix_pt_status   ON picking.picking_tasks (status);
+-- CREATE INDEX ix_pt_assignee ON picking.picking_tasks (assigned_to);
+
+-- ============================================================
+-- [3] inspection : 검품
+-- ============================================================
+-- CREATE TABLE inspection.inspections (
+--   inspection_id       bigserial   PRIMARY KEY,
+--   order_item_id       bigint      NOT NULL REFERENCES picking.order_items(order_item_id) ON DELETE RESTRICT,
+--   inspector           text,
+--   result              text        NOT NULL,  -- 'pass','fail','hold'
+--   fail_reason         text,
+--   inspected_at        timestamptz NOT NULL DEFAULT now(),
+--   photo_url           text,
+--   created_at          timestamptz NOT NULL DEFAULT now()
+-- );
+-- CREATE INDEX ix_insp_oitem  ON inspection.inspections (order_item_id);
+-- CREATE INDEX ix_insp_result ON inspection.inspections (result);
+
+-- ============================================================
+-- [4] cs : 클레임 / 반품 / 교환 / CS 티켓
+-- ============================================================
+-- CREATE TABLE cs.tickets (
+--   ticket_id           bigserial   PRIMARY KEY,
+--   order_id            text        REFERENCES picking.orders(order_id) ON UPDATE CASCADE,
+--   order_item_id       bigint      REFERENCES picking.order_items(order_item_id) ON DELETE SET NULL,
+--   type                text        NOT NULL,   -- 'return','exchange','complaint','refund','question'
+--   status              text        NOT NULL,   -- 'open','in_progress','resolved','closed'
+--   channel_code        text,
+--   summary             text,
+--   detail              text,
+--   opened_at           timestamptz NOT NULL DEFAULT now(),
+--   resolved_at         timestamptz,
+--   handler             text
+-- );
+-- CREATE INDEX ix_tickets_order  ON cs.tickets (order_id);
+-- CREATE INDEX ix_tickets_status ON cs.tickets (status);
+
+-- CREATE TABLE cs.ticket_events (
+--   event_id            bigserial   PRIMARY KEY,
+--   ticket_id           bigint      NOT NULL REFERENCES cs.tickets(ticket_id) ON DELETE CASCADE,
+--   event_type          text        NOT NULL,   -- 'note','status_change','attachment','reply'
+--   actor               text,
+--   payload             jsonb,
+--   created_at          timestamptz NOT NULL DEFAULT now()
+-- );
+
+-- ============================================================
+-- [5] audit : 변경 이력 (선택)
+-- ============================================================
+-- CREATE TABLE audit.row_changes (
+--   change_id   bigserial   PRIMARY KEY,
+--   schema_name text        NOT NULL,
+--   table_name  text        NOT NULL,
+--   pk_text     text        NOT NULL,
+--   op          char(1)     NOT NULL,    -- 'I','U','D'
+--   before      jsonb,
+--   after       jsonb,
+--   actor       text,
+--   changed_at  timestamptz NOT NULL DEFAULT now()
+-- );
+
+-- ============================================================
+-- [6] 권한 설계 (Docker API 서버 = app_api 기준)
+--   - app_api 는 master(product_code) READ-only
+--   - 운영(picking, inspection, cs) 는 READ+WRITE
+--   - audit 는 INSERT only
+-- ============================================================
+-- GRANT USAGE ON SCHEMA product_code TO app_api, app_ro;
+-- GRANT SELECT ON ALL TABLES IN SCHEMA product_code TO app_api, app_ro;
+-- ALTER DEFAULT PRIVILEGES IN SCHEMA product_code
+--   GRANT SELECT ON TABLES TO app_api, app_ro;
+--
+-- GRANT USAGE ON SCHEMA picking, inspection, cs TO app_api, app_ro;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA picking    TO app_api;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA inspection TO app_api;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA cs         TO app_api;
+-- GRANT SELECT ON ALL TABLES IN SCHEMA picking, inspection, cs TO app_ro;
+-- GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA picking, inspection, cs TO app_api;
+--
+-- GRANT USAGE ON SCHEMA audit TO app_api;
+-- GRANT INSERT ON audit.row_changes TO app_api;
+-- GRANT SELECT ON audit.row_changes TO app_ro;
+--
+-- GRANT USAGE, CREATE ON SCHEMA stg TO app_etl;
+
+-- ============================================================
+-- [7] 보존 정책 / partitioning (선택, 데이터 양 보고 결정)
+-- ============================================================
+-- 예: 주문/피킹 라인이 연간 수백만 단위면 picking.order_items 를
+--     RANGE PARTITION BY (ordered_at) 으로 월 파티션 권장.
+--     사전조사 [K-3] row count 결과를 보고 결정.
