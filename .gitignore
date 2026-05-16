@@ -11,10 +11,15 @@ server/node_modules/
 
 # local docker / data volumes
 docker-data/
+backups/
 
 # regenerable analysis artifacts
 outputs/
 exports/
+
+# Python cache
+__pycache__/
+*.pyc
 
 # large source exports
 메이크샵_ALL_변경양식.xml
