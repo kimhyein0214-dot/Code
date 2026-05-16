@@ -1734,6 +1734,67 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 - local DB 데이터 변경 없음.
 - write 기능 추가 없음.
 - GitHub push / `git add .` / commit 없음.
+
+## MakeShop weak_top1 strong candidate validate/dryrun SQL (2026-05-15)
+
+### 목적
+
+`outputs/makeshop_weak_top1_strong_candidate.csv` 6,389건이 로컬 `product_ops_test`의 `product_code.sku_channel_mapping`에 channel mapping 후보로 들어갈 수 있는지 검증하기 위한 validate/dryrun SQL을 준비했다.
+
+이 단계는 실제 apply가 아니다. 운영 DB 반영도 아니다.
+
+### 작성 파일
+
+- `sql/validate_makeshop_weak_top1_strong_candidate.sql`
+- `sql/dryrun_apply_makeshop_weak_top1_strong_candidate.sql`
+- `docs/codex_handoff_status.md`
+
+### 입력
+
+- local file: `outputs/makeshop_weak_top1_strong_candidate.csv`
+- container path: `/tmp/makeshop_weak_top1_strong_candidate.csv`
+- expected rows: 6,389
+
+### Validate 기준
+
+- `product_ops_test` guard
+- `BEGIN` / `ROLLBACK`
+- `CREATE TEMP TABLE`만 사용
+- persistent `INSERT/UPDATE/DELETE/ALTER/DROP/TRUNCATE` 없음
+- source rows = 6,389
+- `channel_sku_code` blank = 0
+- `product_uid` blank = 0
+- `top1_candidate_sku_id` blank/invalid = 0
+- duplicate `channel_sku_code` = 0
+- `top1_candidate_sku_id`가 `product_code.sku_master.id`에 모두 존재
+- 기존 `sku_channel_mapping(channel_code='makeshop')`와 overlap = 0
+- same key + same SKU는 `idempotent_existing`으로 별도 표시
+- same key + different SKU는 conflict로 표시
+- `selfpia_option_no_matches_sto_id` 모두 true
+- `option_partial_match` 또는 `option_exact_match` 모두 true
+- `token_score >= 70`
+- `candidate_sku_count <= 3`
+- validation verdict 출력
+
+### Dryrun 기준
+
+- 실제 반영 없음. 마지막 `ROLLBACK`
+- target: `product_code.sku_channel_mapping`
+- `channel_code='makeshop'`
+- `channel_sku_code = CSV.channel_sku_code`
+- `sku_id = CSV.top1_candidate_sku_id`
+- `seller_product_code = CSV.product_uid`
+- `own_sku_code` 및 evidence는 target에 컬럼이 있으면 사용하고, `raw_payload`가 있으면 JSON metadata로 포함
+- expected insert candidates = 6,389
+- conflict, duplicate, missing SKU, already existing이 모두 0이어야 PASS
+
+### Safety
+
+- review 대상 실제 apply SQL 작성 없음
+- 운영 DB 반영 없음
+- DDL 없음
+- API/Frontend 변경 없음
+- dryrun SQL은 transaction 내부 simulation 후 `ROLLBACK`
 - `sku_id` UUID는 요약표에 노출하지 않고 `SKU 정보`의 `내부 ID`로만 작게 표시.
 
 ### 검증 결과
@@ -1891,3 +1952,66 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 - ProductDetailPage / ProductListPage 변경 없음.
 - write 기능 추가 없음.
 - GitHub push / `git add .` / commit 없음.
+
+## 전체 Git 정리 현황 (2026-05-16)
+
+### 완료된 커밋
+
+아래 커밋들은 모두 `master` 로컬 브랜치에만 존재한다. 아직 push하지 않았다.
+
+- `30353f2` Improve alias search type selector UI
+- `3b6108e` Add Smartstore integration handoff
+- `6a4d7ab` Add MakeShop review workflow assets
+- `dfdf2be` Ignore backups and Python cache files
+- `1641ee1` Add Smartstore SQL validation workflow
+- `262f583` Add product image SQL validation workflow
+- `f4c35d0` Add local data import SQL validation workflow
+- `4cfed27` Add general SQL validation and cross mapping checks
+- `082608b` Add local test seed SQL fixtures
+- `b5571d4` Add NAS PostgreSQL schema drafts
+
+### 현재 안전 상태
+
+- 큰일 난 상태 아님.
+- 전체 파일/Git 상태 정리는 약 90~95% 완료.
+- 프론트 / Smartstore / MakeShop / product_image / local_data / general validation / seed / NAS schema draft는 각각 분리 커밋 완료.
+- `backups/`, `__pycache__/`, `*.pyc` ignore 규칙 반영 완료.
+- GitHub push 없음.
+
+### 운영 DB/NAS/DDL 관련 상태
+
+- 운영 Supabase 변경 없음.
+- NAS PostgreSQL 변경 없음.
+- SQL 실행 없음.
+- DB apply 없음.
+- DDL 실행 없음.
+- apply SQL과 local schema patch/test SQL은 계속 보류.
+
+### 남은 보류 파일
+
+- `sql/apply_local_data_import.sql`
+- `sql/apply_makeshop_auto_confirm_v3.sql`
+- `sql/apply_product_image_import.sql`
+- `sql/apply_smartstore_alias_import.sql`
+- `sql/apply_smartstore_product_no_import.sql`
+- `sql/check_local_own_sku_coverage.sql`
+- `sql/local_schema_apply_test.sql`
+- `sql/schema_local_patch_product_image.sql`
+
+### 다음 작업 순서
+
+1. 이 전체 진행상황 문서 정리분을 검토하고, 문서 단독 커밋 여부를 결정한다.
+2. 이후 MakeShop 추가 apply 여부를 별도 판단한다.
+3. 가격/재고/export 설계는 DB 적용과 분리해 별도 계획으로 검토한다.
+4. apply/schema/local patch 파일은 실행 전 목적, 대상 DB, rollback/recovery 절차를 다시 확인한다.
+
+### 절대 금지사항
+
+- `git add .` 금지.
+- 사용자 승인 전 commit/push 금지.
+- SQL 실행 금지.
+- DB apply 금지.
+- DDL 실행 금지.
+- 운영 Supabase 변경 금지.
+- NAS PostgreSQL 변경 금지.
+- apply SQL / schema local patch SQL / outputs / exports / backups 임의 add 금지.
