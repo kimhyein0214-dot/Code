@@ -2069,3 +2069,64 @@ Smartstore는 실제 코드가 없어도 숨기지 않고 `미매핑` row로 표
 - 운영 Supabase 변경 금지.
 - NAS PostgreSQL 변경 금지.
 - apply SQL / schema local patch SQL / outputs / exports / backups 임의 add 금지.
+
+## Smartstore productNo overlap cleanup PASS (2026-05-17)
+
+### 완료 상태
+
+로컬 Docker PostgreSQL `product_ops_test` DB에서 Smartstore productNo confirmed/candidate overlap 1건을 cleanup했다. 변경은 local DB의 `product_code.code_alias` 내 `smartstore_product_no_candidate` 1건 삭제뿐이며, 운영 Supabase/NAS/원격 DB 변경은 없다.
+
+상세 결과 문서: `docs/smartstore_product_no_cleanup_result.md`
+
+| 항목 | 값 |
+|---|---:|
+| container | `product_ops_test_postgres` |
+| database | `product_ops_test` |
+| DB user | `product_ops_tester` |
+| cleanup target code_system | `smartstore_product_no_candidate` |
+| cleanup target_id | `f46f312c-4c9e-4405-a9a7-c23e1155bd31` |
+| cleanup code_value | `7577001822` |
+| deleted rows | 1 |
+| smartstore_product_no after | 897 |
+| smartstore_product_no_candidate after | 11,690 |
+| confirmed/candidate overlap after | 0 |
+| candidate primary violations after | 0 |
+| SKU 1000-3 productNo rows after | 0 |
+| apply final verdict | `OVERALL PASS` |
+| postcheck final verdict | `OVERALL PASS` |
+
+백업:
+
+- `backups/product_ops_test_before_smartstore_product_no_overlap_cleanup_20260517_205309.dump`
+- format: `pg_dump -Fc`
+- size: 16,154,280 bytes
+
+결과 파일:
+
+- `outputs/dryrun_cleanup_smartstore_product_no_candidate_overlap_20260517_205309.txt`
+- `outputs/dryrun_cleanup_smartstore_product_no_candidate_overlap_20260517_205309_rerun.txt`
+- `outputs/apply_cleanup_smartstore_product_no_candidate_overlap_20260517_205309.txt`
+- `outputs/postcheck_cleanup_smartstore_product_no_candidate_overlap_20260517_205309.txt`
+
+실행 메모:
+
+- 첫 dryrun은 data-modifying CTE snapshot 문제로 `remaining_overlap_in_tx=1`이 떠서 중단됐다.
+- 해당 dryrun transaction은 `ROLLBACK`됐고 target row 1건 유지가 확인됐다.
+- dryrun SQL을 보정한 뒤 재실행했고 `OVERALL PASS`를 확인했다.
+- apply cleanup은 COMMIT 전 검증에서 deleted rows 1, confirmed count 897, candidate count 11,690, overlap 0, optionNo 계열 unchanged를 모두 PASS로 확인한 뒤 COMMIT됐다.
+- cleanup 후 공식 검증은 `sql/postcheck_cleanup_smartstore_product_no_candidate_overlap.sql` 기준이다.
+- 기존 `sql/postcheck_smartstore_product_no_import.sql`은 cleanup 전 candidate count 11,691을 기대하므로 cleanup 후 공식 검증으로 사용하지 않는다.
+
+안전 상태:
+
+- `smartstore_product_no` confirmed row는 삭제/수정하지 않았다.
+- `smartstore_option_no` / `smartstore_option_no_candidate`는 삭제/수정하지 않았다.
+- 운영 Supabase 변경 없음.
+- NAS PostgreSQL 변경 없음.
+- 원격 DB 접근 없음.
+- API/Frontend 변경 없음.
+
+재발 방지:
+
+- `smartstore_product_no_candidate` 생성 또는 stage 단계에서 confirmed `smartstore_product_no`와 같은 `target_id + code_value`를 가진 candidate row는 제외해야 한다.
+- optionNo 후보 의미는 `smartstore_option_no_candidate`로 보존하고, productNo candidate에는 confirmed productNo와 동일한 중복 후보를 남기지 않는다.
