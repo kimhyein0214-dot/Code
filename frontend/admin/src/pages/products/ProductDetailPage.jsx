@@ -172,6 +172,7 @@ function buildConnectionSummary({
   ownSkuCodes,
   codeSummaryRows,
   smartstoreAliasCodes,
+  smartstoreProductCandidateCodes,
   smartstoreCandidateCodes
 }) {
   const connectedChannels = mappings
@@ -195,8 +196,9 @@ function buildConnectionSummary({
     .join(', ');
 
   // candidate 는 확정 연결로 표기하지 않고 별도 "연결 후보" 라인에 분리.
-  const candidateText = smartstoreCandidateCodes.length > 0
-    ? `Smartstore 후보 ${smartstoreCandidateCodes.length}개`
+  const candidateCount = uniqueValues([...smartstoreProductCandidateCodes, ...smartstoreCandidateCodes]).length;
+  const candidateText = candidateCount > 0
+    ? `Smartstore 후보 ${candidateCount}개`
     : '';
 
   const unmappedSellers = codeSummaryRows
@@ -213,6 +215,82 @@ function buildConnectionSummary({
   ];
 
   return summary;
+}
+
+function SmartstoreCodeReviewPanel({
+  smartstoreProductCodes,
+  smartstoreAliasCodes,
+  smartstoreProductCandidateCodes,
+  smartstoreCandidateCodes
+}) {
+  const rows = [
+    {
+      key: 'product-confirmed',
+      label: 'productNo 확정값',
+      values: smartstoreProductCodes,
+      status: smartstoreProductCodes.length > 0 ? '확정' : '없음',
+      note: '운영 확정 Smartstore 상품번호'
+    },
+    {
+      key: 'option-confirmed',
+      label: 'optionNo 확정값',
+      values: smartstoreAliasCodes,
+      status: smartstoreAliasCodes.length > 0 ? '확정' : '없음',
+      note: '운영 확정 Smartstore 옵션번호'
+    },
+    {
+      key: 'product-candidate',
+      label: 'productNo 후보값',
+      values: smartstoreProductCandidateCodes,
+      status: smartstoreProductCandidateCodes.length > 0 ? '후보' : '없음',
+      note: '후보 / 운영 미확정 / export 사용 금지'
+    },
+    {
+      key: 'option-candidate',
+      label: 'optionNo 후보값',
+      values: smartstoreCandidateCodes,
+      status: smartstoreCandidateCodes.length > 0 ? '후보' : '없음',
+      note: '후보 / 운영 미확정 / export 사용 금지'
+    }
+  ];
+
+  return (
+    <section className="panel smartstore-review-panel" aria-label="Smartstore 확정값과 후보값">
+      <div className="panel-header">
+        <div>
+          <h2>Smartstore 확정값 / 후보값</h2>
+          <p className="hint">확정값과 후보값을 분리해서 표시합니다. 후보는 운영 미확정이며 export에 사용할 수 없습니다.</p>
+        </div>
+      </div>
+      <div className="smartstore-review-grid">
+        {rows.map((row) => (
+          <div className={`smartstore-review-item is-${row.status === '후보' ? 'candidate' : row.status === '확정' ? 'confirmed' : 'empty'}`} key={row.key}>
+            <div className="smartstore-review-title">
+              <span>{row.label}</span>
+              <MappingStatus status={row.status === '확정' ? '연결됨' : row.status === '후보' ? '후보' : '미매핑'} />
+            </div>
+            <div className="smartstore-review-values">
+              {row.values.length > 0
+                ? row.values.map((value) => <CodeValue value={value} key={value} />)
+                : <span className="muted">없음</span>}
+            </div>
+            <p className="hint">{row.note}</p>
+          </div>
+        ))}
+      </div>
+      <div className="review-placeholder-actions" aria-label="수동검수 placeholder">
+        <button className="button-subtle" type="button" disabled title="이번 버전은 read-only입니다. 저장 기능은 구현하지 않습니다.">
+          수동확정 placeholder
+        </button>
+        <button className="button-subtle" type="button" disabled title="이번 버전은 read-only입니다. 저장 기능은 구현하지 않습니다.">
+          반려 placeholder
+        </button>
+        <button className="button-subtle" type="button" disabled title="이번 버전은 read-only입니다. 저장 기능은 구현하지 않습니다.">
+          보류 placeholder
+        </button>
+      </div>
+    </section>
+  );
 }
 
 export function ProductDetailPage() {
@@ -298,6 +376,7 @@ export function ProductDetailPage() {
     ownSkuCodes,
     codeSummaryRows,
     smartstoreAliasCodes,
+    smartstoreProductCandidateCodes,
     smartstoreCandidateCodes
   });
 
@@ -353,6 +432,13 @@ export function ProductDetailPage() {
           </div>
         ))}
       </section>
+
+      <SmartstoreCodeReviewPanel
+        smartstoreProductCodes={smartstoreProductCodes}
+        smartstoreAliasCodes={smartstoreAliasCodes}
+        smartstoreProductCandidateCodes={smartstoreProductCandidateCodes}
+        smartstoreCandidateCodes={smartstoreCandidateCodes}
+      />
 
       <section className="panel code-summary-panel">
         <div className="panel-header">

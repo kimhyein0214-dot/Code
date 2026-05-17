@@ -1,10 +1,48 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 import { productsApi } from '../../api/client.js';
-import { ProductCardRow } from '../../components/ProductCardRow.jsx';
+import { getProductConnectionStatus, ProductCardRow } from '../../components/ProductCardRow.jsx';
 
-const DEFAULT_SEARCH = '1258-1';
-const SEARCH_EXAMPLES = ['1258-1', '1000-1', '11258-1', '피어싱', 'LOCAL_TEST_PM'];
+const DEFAULT_SEARCH = '10007';
+const SEARCH_EXAMPLES = ['10007-1', '10000-1', '10005-1', '10004-1', '1012-1', '1181-31'];
+
+const SMARTSTORE_FILTERS = [
+  { value: 'all', label: '전체' },
+  { value: 'confirmed', label: '확정 있음' },
+  { value: 'candidate_only', label: '후보만 있음' },
+  { value: 'unmapped', label: '미매핑' },
+  { value: 'confirmed_and_candidate', label: '확정+후보 같이 있음' }
+];
+
+const MAKESHOP_FILTERS = [
+  { value: 'all', label: '전체' },
+  { value: 'connected', label: '연결 있음' },
+  { value: 'unconnected', label: '미연결' }
+];
+
+const IMAGE_FILTERS = [
+  { value: 'all', label: '전체' },
+  { value: 'present', label: '이미지 있음' },
+  { value: 'missing', label: '이미지 없음' }
+];
+
+const OWN_SKU_FILTERS = [
+  { value: 'all', label: '전체' },
+  { value: 'present', label: '있음' },
+  { value: 'missing', label: '없음' }
+];
+
+function matchesFilters(product, detail, filters) {
+  const status = getProductConnectionStatus(product, detail);
+  const imageStatus = status.hasImage ? 'present' : 'missing';
+
+  return (
+    (filters.smartstore === 'all' || status.smartstoreStatus === filters.smartstore) &&
+    (filters.makeshop === 'all' || status.makeshopStatus === filters.makeshop) &&
+    (filters.image === 'all' || imageStatus === filters.image) &&
+    (filters.ownSku === 'all' || status.ownSkuStatus === filters.ownSku)
+  );
+}
 
 export function ProductListPage() {
   const [search, setSearch] = useState(DEFAULT_SEARCH);
@@ -14,6 +52,12 @@ export function ProductListPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastQuery, setLastQuery] = useState('');
+  const [filters, setFilters] = useState({
+    smartstore: 'all',
+    makeshop: 'all',
+    image: 'all',
+    ownSku: 'all'
+  });
   const requestSeq = useRef(0);
 
   async function load(term) {
@@ -75,6 +119,23 @@ export function ProductListPage() {
     load(example);
   }
 
+  function updateFilter(key, value) {
+    setFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  function resetFilters() {
+    setFilters({
+      smartstore: 'all',
+      makeshop: 'all',
+      image: 'all',
+      ownSku: 'all'
+    });
+  }
+
+  const detailsReady = rows.every((row) => detailsBySkuId[row.sku_id] !== undefined);
+  const filteredRows = rows.filter((row) => matchesFilters(row, detailsBySkuId[row.sku_id], filters));
+  const activeFilterCount = Object.values(filters).filter((value) => value !== 'all').length;
+
   return (
     <section className="page">
       <div className="page-header">
@@ -125,11 +186,65 @@ export function ProductListPage() {
         </p>
       </section>
 
+      <section className="section-card product-filter-card" aria-label="매칭 상태 필터">
+        <div className="panel-header">
+          <div>
+            <h2>매칭 상태 필터</h2>
+            <p className="hint">현재 조회된 SKU 안에서 Smartstore, MakeShop, 이미지, 자사코드 상태를 read-only로 걸러봅니다.</p>
+          </div>
+          <button className="button-subtle" type="button" onClick={resetFilters} disabled={activeFilterCount === 0}>
+            필터 초기화
+          </button>
+        </div>
+
+        <div className="filter-grid">
+          <label>
+            <span>Smartstore</span>
+            <select value={filters.smartstore} onChange={(event) => updateFilter('smartstore', event.target.value)}>
+              {SMARTSTORE_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>{filter.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>MakeShop</span>
+            <select value={filters.makeshop} onChange={(event) => updateFilter('makeshop', event.target.value)}>
+              {MAKESHOP_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>{filter.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>이미지</span>
+            <select value={filters.image} onChange={(event) => updateFilter('image', event.target.value)}>
+              {IMAGE_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>{filter.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>자사코드</span>
+            <select value={filters.ownSku} onChange={(event) => updateFilter('ownSku', event.target.value)}>
+              {OWN_SKU_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>{filter.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="filter-summary">
+          <span>조회 {rows.length}건</span>
+          <span>필터 결과 {filteredRows.length}건</span>
+          {detailLoading && <span>상세 상태 계산 중</span>}
+          {!detailLoading && rows.length > 0 && !detailsReady && <span>일부 상태 미확인</span>}
+        </div>
+      </section>
+
       {error && <div className="notice error">조회 실패: {error}</div>}
       {loading && !error && <div className="notice">상품을 조회하는 중입니다.</div>}
 
       <div className="product-card-list" aria-busy={loading}>
-        {!loading && rows.map((row, index) => (
+        {!loading && filteredRows.map((row, index) => (
           <ProductCardRow
             key={`${row.sku_id}-${row.selfpia_sku_code || row.virtual_sku_code || index}`}
             product={row}
@@ -144,6 +259,12 @@ export function ProductListPage() {
               <code>{lastQuery || search}</code> 조건으로 조회된 SKU가 없습니다.
               예시 검색어를 누르거나 검색어를 줄여보세요.
             </p>
+          </div>
+        )}
+        {!loading && rows.length > 0 && filteredRows.length === 0 && (
+          <div className="empty-state">
+            <strong>필터 결과가 없습니다.</strong>
+            <p>현재 조회 결과 안에서는 선택한 매칭 상태 조합에 해당하는 SKU가 없습니다.</p>
           </div>
         )}
       </div>

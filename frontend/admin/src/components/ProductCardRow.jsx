@@ -13,32 +13,68 @@ function hasChannel(mappings, channelCode) {
   return mappings.some((mapping) => mapping.channel_code === channelCode);
 }
 
-function makeStatusItems(product, detail, detailLoading) {
+export function getProductConnectionStatus(product, detail) {
   const aliases = detail?.aliases || [];
   const mappings = detail?.channel_mappings || [];
   const ownSkuCode = firstAliasValue(aliases, 'own_sku') || mappings.find((mapping) => mapping.own_sku_code)?.own_sku_code || '';
   const hasImage = Boolean(product.thumbnail_url || product.image_url);
   const makeshopConnected = hasChannel(mappings, 'makeshop');
   const smartstoreConnected =
-    Boolean(firstAliasValue(aliases, 'smartstore_option_no')) || hasChannel(mappings, 'smartstore');
-  const smartstoreCandidate = Boolean(firstAliasValue(aliases, 'smartstore_option_no_candidate'));
+    Boolean(firstAliasValue(aliases, 'smartstore_option_no')) ||
+    Boolean(firstAliasValue(aliases, 'smartstore_product_no')) ||
+    hasChannel(mappings, 'smartstore');
+  const smartstoreCandidate =
+    Boolean(firstAliasValue(aliases, 'smartstore_option_no_candidate')) ||
+    Boolean(firstAliasValue(aliases, 'smartstore_product_no_candidate'));
+  const smartstoreStatus = smartstoreConnected && smartstoreCandidate
+    ? 'confirmed_and_candidate'
+    : smartstoreConnected
+      ? 'confirmed'
+      : smartstoreCandidate
+        ? 'candidate_only'
+        : 'unmapped';
+
+  return {
+    hasImage,
+    makeshopStatus: makeshopConnected ? 'connected' : 'unconnected',
+    ownSkuStatus: ownSkuCode ? 'present' : 'missing',
+    smartstoreStatus
+  };
+}
+
+function makeStatusItems(product, detail, detailLoading) {
+  const status = getProductConnectionStatus(product, detail);
 
   const items = [
     {
-      label: makeshopConnected ? 'MakeShop 연결됨' : 'MakeShop 미매핑',
-      className: makeshopConnected ? 'status-connected' : 'status-unmapped'
+      label: status.makeshopStatus === 'connected' ? 'MakeShop 연결' : 'MakeShop 미연결',
+      className: status.makeshopStatus === 'connected' ? 'status-connected' : 'status-unmapped'
     },
     {
-      label: smartstoreConnected ? 'Smartstore 연결됨' : smartstoreCandidate ? 'Smartstore 후보' : 'Smartstore 미매핑',
-      className: smartstoreConnected ? 'status-connected' : smartstoreCandidate ? 'status-candidate' : 'status-unmapped'
+      label:
+        status.smartstoreStatus === 'confirmed_and_candidate'
+          ? 'Smartstore 확정+후보'
+          : status.smartstoreStatus === 'confirmed'
+            ? 'Smartstore 확정'
+            : status.smartstoreStatus === 'candidate_only'
+              ? 'Smartstore 후보'
+              : 'Smartstore 미매핑',
+      className:
+        status.smartstoreStatus === 'confirmed_and_candidate'
+          ? 'status-needs-review'
+          : status.smartstoreStatus === 'confirmed'
+            ? 'status-connected'
+            : status.smartstoreStatus === 'candidate_only'
+              ? 'status-candidate'
+              : 'status-unmapped'
     },
     {
-      label: hasImage ? '이미지 있음' : '이미지 없음',
-      className: hasImage ? 'status-connected' : 'status-unmapped'
+      label: status.hasImage ? '이미지 있음' : '이미지 없음',
+      className: status.hasImage ? 'status-connected' : 'status-unmapped'
     },
     {
-      label: ownSkuCode ? '자사코드 있음' : '자사코드 없음',
-      className: ownSkuCode ? 'status-connected' : 'status-unmapped'
+      label: status.ownSkuStatus === 'present' ? '자사코드 있음' : '자사코드 없음',
+      className: status.ownSkuStatus === 'present' ? 'status-connected' : 'status-unmapped'
     }
   ];
 

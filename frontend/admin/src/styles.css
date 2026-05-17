@@ -409,6 +409,63 @@ select {
   white-space: nowrap;
 }
 
+.smartstore-review-panel {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+}
+
+.smartstore-review-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.smartstore-review-item {
+  background: #ffffff;
+  border: 1px solid #e6ebf3;
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.smartstore-review-item.is-confirmed {
+  border-color: #bbebc9;
+}
+
+.smartstore-review-item.is-candidate {
+  background: #fffaf0;
+  border-color: #f1c65d;
+}
+
+.smartstore-review-title {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.smartstore-review-title > span {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.smartstore-review-values {
+  display: grid;
+  gap: 7px;
+  min-height: 28px;
+}
+
+.review-placeholder-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .raw-data-panel {
   box-shadow: 0 10px 26px rgba(30, 41, 59, 0.035);
   padding: 0;
@@ -823,6 +880,49 @@ table.zebra tbody tr:nth-child(even) {
 .product-search-toolbar input {
   flex: 1;
   max-width: 760px;
+}
+
+.product-filter-card {
+  display: grid;
+  gap: 16px;
+}
+
+.filter-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.filter-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-grid label span {
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.filter-grid select {
+  min-width: 0;
+  width: 100%;
+}
+
+.filter-summary {
+  align-items: center;
+  color: #64748b;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.filter-summary span {
+  background: #f4f7fb;
+  border: 1px solid #e1e8f2;
+  border-radius: 999px;
+  padding: 6px 10px;
 }
 
 .alias-search-card {
@@ -1268,6 +1368,11 @@ table.zebra tbody tr:nth-child(even) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .filter-grid,
+  .smartstore-review-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .product-detail-hero {
     align-items: start;
     grid-template-columns: 130px minmax(0, 1fr);
@@ -1316,7 +1421,9 @@ table.zebra tbody tr:nth-child(even) {
     grid-template-columns: 1fr;
   }
 
-  .alias-type-grid {
+  .alias-type-grid,
+  .filter-grid,
+  .smartstore-review-grid {
     grid-template-columns: 1fr;
   }
 
