@@ -110,11 +110,14 @@ manual_or_confirmed_overwrite AS (
   SELECT
     ar.sku_id,
     COUNT(*) FILTER (
-      WHERE lower(COALESCE(ca.usage_type, '')) LIKE '%manual%'
-         OR lower(COALESCE(ca.memo, '')) LIKE '%manual%'
-         OR COALESCE(ca.memo, '') LIKE '%' || U&'\C218\B3D9' || '%'
-         OR lower(COALESCE(ca.raw_payload::text, '')) LIKE '%manual%'
-         OR lower(COALESCE(ca.raw_payload::text, '')) LIKE '%reviewer%'
+      WHERE ca.source_project_ref <> 'smartstore_auto_match_dryrun_v1'
+        AND (
+          lower(COALESCE(ca.usage_type, '')) LIKE '%manual%'
+          OR lower(COALESCE(ca.memo, '')) LIKE '%manual%'
+          OR COALESCE(ca.memo, '') LIKE '%' || U&'\C218\B3D9' || '%'
+          OR lower(COALESCE(ca.raw_payload::text, '')) LIKE '%manual%'
+          OR lower(COALESCE(ca.raw_payload::text, '')) LIKE '%reviewer%'
+        )
     ) AS manual_marker_rows,
     COUNT(*) FILTER (
       WHERE ca.source_project_ref <> 'smartstore_auto_match_dryrun_v1'
