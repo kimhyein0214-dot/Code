@@ -18,6 +18,8 @@
 --   - No persistent database changes.
 --   - Ably/PlayAuto are marked source_not_loaded because their source stage
 --     import is not part of the final matching basis for this export.
+--   - Selfpia/own SKU code columns are exported as Excel-safe text formulas
+--     so values such as 2234-07-01 do not auto-convert to dates.
 -- =============================================================================
 
 \set ON_ERROR_STOP on
@@ -191,6 +193,36 @@ review_candidates AS (
   FROM classified
   WHERE smartstore_confirmed_count = 0
     AND makeshop_mapping_count = 0
+),
+excel_export AS (
+  SELECT
+    review_priority,
+    CASE
+      WHEN selfpia_product_code IS NULL THEN NULL
+      ELSE '="' || replace(selfpia_product_code, '"', '""') || '"'
+    END AS selfpia_product_code,
+    CASE
+      WHEN selfpia_sku_code IS NULL THEN NULL
+      ELSE '="' || replace(selfpia_sku_code, '"', '""') || '"'
+    END AS selfpia_sku_code,
+    product_id,
+    sku_id,
+    product_name,
+    option_name,
+    option_value,
+    CASE
+      WHEN own_sku_code IS NULL THEN NULL
+      ELSE '="' || replace(own_sku_code, '"', '""') || '"'
+    END AS own_sku_code,
+    smartstore_status,
+    makeshop_status,
+    ably_playauto_status,
+    image_status,
+    unmatched_reason,
+    caution_note,
+    review_result,
+    reviewer_note
+  FROM review_candidates
 )
 SELECT
   review_priority AS "검토우선순위",
@@ -210,7 +242,7 @@ SELECT
   caution_note AS "주의메모",
   review_result AS "삭제검토결과",
   reviewer_note AS "검토자메모"
-FROM review_candidates
+FROM excel_export
 ORDER BY
   CASE review_priority
     WHEN 'P1_높음' THEN 1
