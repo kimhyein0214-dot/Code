@@ -117,6 +117,25 @@ const SOURCE_STATUS_META = {
   unknown: { label: '상태 미상' }
 };
 
+const RISK_REASON_SUMMARY = {
+  source_conflict: '여러 후보와 근거가 겹쳐 자동 확정하기 어렵습니다.',
+  warning_bucket: '원천 데이터 경고 또는 주의 조건이 있어 확인이 필요합니다.',
+  narrow_risk: '색상, 옵션, 수량 조건이 좁게 갈려 오매칭 위험이 있습니다.',
+  evidence_missing: '자동 판단에 필요한 SKU 근거가 부족합니다.',
+  channel_absent_or_inactive_possible: '판매처에 없거나 비활성 상태일 수 있어 운영 여부 확인이 필요합니다.',
+  duplicate_sku: '동일하거나 유사한 SKU 후보가 중복되어 확인이 필요합니다.',
+  existing_conflict: '기존 매핑과 충돌할 수 있어 덮어쓰기 전 확인이 필요합니다.',
+  manual_review_required: '자동확정 조건을 통과하지 못해 사람이 확인해야 합니다.'
+};
+
+const PRIORITY_META = {
+  urgent: { label: '우선 확인', description: '자동확정에서 가장 먼저 분리해 봐야 하는 후보입니다.' },
+  caution: { label: '주의 확인', description: '옵션, 원천 경고, 주의 조건을 사람이 확인해야 합니다.' },
+  operation: { label: '운영 여부 확인', description: '삭제 처리로 단정하지 말고 현재 운영 상태를 확인해야 합니다.' },
+  duplicate: { label: '중복 확인', description: '중복 근거 또는 중복 SKU를 비교해야 합니다.' },
+  normal: { label: '일반 확인', description: '사람이 검토해야 하는 후보입니다.' }
+};
+
 const CHANNEL_LABELS = {
   ably: 'Ably',
   smartstore: 'Smartstore',
@@ -137,6 +156,30 @@ function metaDescription(value, metaMap = {}) {
 
 function compactText(value) {
   return value === undefined || value === null || value === '' ? '-' : String(value);
+}
+
+function isInactiveReviewScope(value) {
+  return value === 'deletion_or_inactive_review_candidate';
+}
+
+function priorityFor(row) {
+  if (row.risk_type === 'source_conflict' || row.risk_type === 'evidence_missing') {
+    return 'urgent';
+  }
+  if (row.risk_type === 'narrow_risk' || row.risk_type === 'warning_bucket') {
+    return 'caution';
+  }
+  if (row.risk_type === 'channel_absent_or_inactive_possible' || isInactiveReviewScope(row.review_scope)) {
+    return 'operation';
+  }
+  if (row.risk_type === 'duplicate_sku') {
+    return 'duplicate';
+  }
+  return 'normal';
+}
+
+function riskReasonSummary(row) {
+  return RISK_REASON_SUMMARY[row.risk_type] || metaDescription(row.risk_type, RISK_TYPE_META) || compactText(row.risk_reason);
 }
 
 function numericParam(value, fallback) {
@@ -197,7 +240,7 @@ function DistributionList({ title, rows, metaMap }) {
 }
 
 function ScopeBadge({ value }) {
-  const isInactiveReview = value === 'deletion_or_inactive_review_candidate';
+  const isInactiveReview = isInactiveReviewScope(value);
   return (
     <span className={`manual-scope-badge ${isInactiveReview ? 'is-inactive-review' : 'is-manual-match'}`}>
       {metaLabel(value, REVIEW_SCOPE_META)}
@@ -207,6 +250,16 @@ function ScopeBadge({ value }) {
 
 function TinyBadge({ value, metaMap, tone = '' }) {
   return <span className={`manual-tiny-badge ${tone}`}>{metaLabel(value, metaMap)}</span>;
+}
+
+function PriorityBadge({ row }) {
+  const priority = priorityFor(row);
+  const meta = PRIORITY_META[priority];
+  return (
+    <span className={`manual-priority-badge is-${priority}`} title={meta.description}>
+      {meta.label}
+    </span>
+  );
 }
 
 function FieldPill({ label, value, featured = false }) {
@@ -236,11 +289,49 @@ function DetailItem({ label, value }) {
   );
 }
 
+function InactiveReviewNotice() {
+  return (
+    <div className="manual-inactive-notice" role="note">
+      <strong>삭제/비활성 검토 후보 안내</strong>
+      <p>삭제 확정이 아니라 운영 여부를 확인하는 후보입니다. 미매칭 = 삭제 대상이 아닙니다.</p>
+      <p>과거 판매 이력, 미노출 상품, 원본자료 누락 가능성이 섞여 있을 수 있습니다.</p>
+    </div>
+  );
+}
+
+function ConflictEvidenceBox({ row }) {
+  if (row.risk_type !== 'source_conflict') {
+    return null;
+  }
+
+  return (
+    <DetailGroup title="충돌/비교 근거">
+      <div className="manual-conflict-box">
+        <div className="manual-conflict-message">
+          <strong>같은 채널 코드 또는 유사 근거가 여러 Selfpia 후보와 연결될 가능성이 있어 자동확정에서 제외되었습니다.</strong>
+          <p>아래 채널 코드와 SKU 후보를 함께 비교해 실제 연결 대상이 하나로 좁혀지는지 확인하세요.</p>
+        </div>
+        <div className="manual-code-grid is-detail">
+          <FieldPill label="채널 상품코드" value={row.channel_product_code} featured />
+          <FieldPill label="채널 옵션코드" value={row.channel_option_code} featured />
+          <FieldPill label="채널 SKU 코드" value={row.channel_sku_code} />
+          <FieldPill label="판매자 상품코드" value={row.seller_product_code} />
+          <FieldPill label="자사 SKU 후보" value={row.own_sku_code_candidate} />
+          <FieldPill label="Selfpia SKU 후보" value={row.selfpia_sku_candidate} featured />
+          <FieldPill label="매칭 SKU ID 후보" value={row.matched_sku_id_candidate} />
+          <FieldPill label="매칭 상품 ID 후보" value={row.matched_product_id_candidate} />
+        </div>
+      </div>
+    </DetailGroup>
+  );
+}
+
 function CandidateDetailPanel({ candidate, detail, loading, error }) {
   const row = detail || candidate;
   const riskDescription = metaDescription(row.risk_type, RISK_TYPE_META);
   const evidenceDescription = metaDescription(row.evidence_level, EVIDENCE_LEVEL_META);
   const actionDescription = metaDescription(row.suggested_action, ACTION_META);
+  const reasonSummary = riskReasonSummary(row);
 
   return (
     <div className="manual-detail-panel">
@@ -248,6 +339,8 @@ function CandidateDetailPanel({ candidate, detail, loading, error }) {
       {error && <div className="notice error">상세 조회 실패: {error}</div>}
       {!loading && !error && (
         <>
+          {isInactiveReviewScope(row.review_scope) && <InactiveReviewNotice />}
+
           <DetailGroup title="왜 검토가 필요한가">
             <div className="manual-explain-grid">
               <div className="manual-explain-card is-risk">
@@ -267,10 +360,14 @@ function CandidateDetailPanel({ candidate, detail, loading, error }) {
               </div>
             </div>
             <div className="manual-risk-reason">
-              <span>상세 사유</span>
+              <span>한글 요약</span>
+              <strong>{reasonSummary}</strong>
+              <span>risk_reason 원문</span>
               <p>{compactText(row.risk_reason)}</p>
             </div>
           </DetailGroup>
+
+          <ConflictEvidenceBox row={row} />
 
           <DetailGroup title="소스 근거">
             <dl className="manual-detail-grid">
@@ -299,9 +396,9 @@ function CandidateDetailPanel({ candidate, detail, loading, error }) {
           </DetailGroup>
 
           <div className="manual-disabled-actions" aria-label="저장 기능 없음">
-            <button type="button" disabled>승인 v2 예정</button>
-            <button type="button" disabled>보류 v2 예정</button>
-            <button type="button" disabled>제외 v2 예정</button>
+            <button type="button" disabled>승인 v2 저장 기능 예정</button>
+            <button type="button" disabled>보류 v2 저장 기능 예정</button>
+            <button type="button" disabled>제외 v2 저장 기능 예정</button>
             <span>보기 전용 화면입니다. 검수 결과는 저장되지 않습니다.</span>
           </div>
         </>
@@ -437,6 +534,9 @@ export function ManualReviewWorkbenchPage() {
   const activeFilterCount = FILTERS.filter((filter) => query[filter.key]).length
     + (query.review_scope ? 1 : 0)
     + (query.search ? 1 : 0);
+  const currentScopeMeta = query.review_scope
+    ? REVIEW_SCOPE_META[query.review_scope]
+    : { label: '전체 후보', description: '수동매칭 후보와 삭제/비활성 검토 후보를 함께 보는 화면입니다.' };
 
   return (
     <section className="page manual-review-page">
@@ -488,6 +588,14 @@ export function ManualReviewWorkbenchPage() {
           </button>
         ))}
       </section>
+
+      <div className="manual-scope-help" role="note">
+        <strong>현재 보기: {currentScopeMeta.label}</strong>
+        <span>{currentScopeMeta.description}</span>
+        {isInactiveReviewScope(query.review_scope) && (
+          <span>삭제 확정 화면이 아닙니다. 미매칭 후보라도 운영 여부와 원본자료 누락 가능성을 먼저 확인합니다.</span>
+        )}
+      </div>
 
       <section className="section-card manual-filter-card" aria-label="수동검수 필터">
         <div className="panel-header">
@@ -555,10 +663,13 @@ export function ManualReviewWorkbenchPage() {
           const expanded = expandedId === candidate.review_candidate_id;
           const riskDescription = metaDescription(candidate.risk_type, RISK_TYPE_META);
           const actionDescription = metaDescription(candidate.suggested_action, ACTION_META);
+          const reasonSummary = riskReasonSummary(candidate);
+          const sourceConflict = candidate.risk_type === 'source_conflict';
+          const inactiveReview = isInactiveReviewScope(candidate.review_scope);
 
           return (
             <article
-              className={`manual-candidate-row ${expanded ? 'is-expanded' : ''}`}
+              className={`manual-candidate-row ${expanded ? 'is-expanded' : ''} ${sourceConflict ? 'is-source-conflict' : ''} ${inactiveReview ? 'is-inactive-review' : ''}`}
               key={candidate.review_candidate_id}
             >
               <button
@@ -569,6 +680,7 @@ export function ManualReviewWorkbenchPage() {
               >
                 <div className="manual-candidate-head">
                   <div className="manual-candidate-topline">
+                    <PriorityBadge row={candidate} />
                     <ScopeBadge value={candidate.review_scope} />
                     <TinyBadge value={candidate.channel_code} tone="is-channel" />
                     <TinyBadge value={candidate.risk_type} metaMap={RISK_TYPE_META} tone="is-risk" />
@@ -603,7 +715,7 @@ export function ManualReviewWorkbenchPage() {
                   <div>
                     <span>왜 검토?</span>
                     <strong>{metaLabel(candidate.risk_type, RISK_TYPE_META)}</strong>
-                    <p>{riskDescription || compactText(candidate.risk_reason)}</p>
+                    <p>{sourceConflict ? '같은 채널 코드 또는 유사 근거가 여러 Selfpia 후보와 연결될 가능성이 있어 자동확정에서 제외되었습니다.' : riskDescription || reasonSummary}</p>
                   </div>
                   <div>
                     <span>추천 검토 방향</span>
@@ -611,6 +723,22 @@ export function ManualReviewWorkbenchPage() {
                     <p>{actionDescription || compactText(candidate.suggested_action)}</p>
                   </div>
                 </div>
+
+                {(sourceConflict || inactiveReview) && (
+                  <div className={`manual-row-help ${sourceConflict ? 'is-conflict' : 'is-inactive'}`}>
+                    {sourceConflict ? (
+                      <>
+                        <strong>충돌 후보 확인 포인트</strong>
+                        <span>채널 상품/옵션 코드, 자사 SKU 후보, Selfpia SKU 후보가 한 상품으로 모이는지 비교하세요.</span>
+                      </>
+                    ) : (
+                      <>
+                        <strong>삭제/비활성 검토 안내</strong>
+                        <span>삭제 확정이 아니라 운영 여부 확인입니다. 미매칭 = 삭제 대상이 아닙니다.</span>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <div className="manual-code-grid">
                   <FieldPill label="채널 상품코드" value={candidate.channel_product_code} featured />
