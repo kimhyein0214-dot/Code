@@ -45,3 +45,15 @@ export const productsApi = {
     return request('/api/products/change-requests');
   }
 };
+
+export const manualReviewApi = {
+  getSummary() {
+    return request('/api/manual-review/summary');
+  },
+  listCandidates(query = {}) {
+    return request(`/api/manual-review/candidates${params(query)}`);
+  },
+  getCandidate(reviewCandidateId) {
+    return request(`/api/manual-review/candidates/${encodeURIComponent(reviewCandidateId)}`);
+  }
+};

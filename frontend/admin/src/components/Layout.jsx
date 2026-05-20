@@ -12,6 +12,7 @@ export function Layout({ children }) {
         <nav className="nav">
           <NavLink to="/products" end>SKU 목록</NavLink>
           <NavLink to="/products/aliases">Alias 검색</NavLink>
+          <NavLink to="/products/manual-review">수동검수</NavLink>
           <NavLink to="/products/change-requests">Change Requests</NavLink>
         </nav>
         <div className="sidebar-foot">
