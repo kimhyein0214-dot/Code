@@ -7,12 +7,14 @@ import { healthRouter } from './routes/health.js';
 import { mappingRouter } from './routes/mapping.js';
 import { pickingRouter } from './routes/picking.js';
 import { productCodeRouter } from './routes/product-code.js';
+import { manualReviewRouter } from './modules/manual-review/routes.js';
 import { productManagementRouter } from './modules/product-management/routes.js';
 
 const app = express();
 const port = Number(process.env.API_PORT || 8080);
 const routeMounts = [
   '/health',
+  '/api/manual-review',
   '/api/products',
   '/product-code',
   '/picking',
@@ -23,6 +25,7 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 app.use('/health', healthRouter);
+app.use('/api/manual-review', manualReviewRouter);
 app.use('/api/products', productManagementRouter);
 app.use('/product-code', productCodeRouter);
 app.use('/picking', pickingRouter);
