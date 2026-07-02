@@ -1,8 +1,10 @@
 import { badRequest, notFound } from '../../shared/errors.js';
 import {
+  getManualReviewDecisionByCandidateId,
   getManualReviewCandidateById,
   getManualReviewSummary,
-  listManualReviewCandidates
+  listManualReviewCandidates,
+  saveManualReviewDecision
 } from './repository.js';
 
 const FILTER_KEYS = [
@@ -79,5 +81,42 @@ export async function getCandidateDetail(reviewCandidateId) {
 export async function getSummary() {
   return {
     data: await getManualReviewSummary()
+  };
+}
+
+export async function getDecision(reviewCandidateId) {
+  const id = reviewCandidateId ? String(reviewCandidateId).trim() : '';
+  if (!id) {
+    throw badRequest('review_candidate_id_required', 'review_candidate_id is required');
+  }
+
+  return {
+    data: await getManualReviewDecisionByCandidateId(id)
+  };
+}
+
+export async function saveDecision(body = {}) {
+  const reviewCandidateId = body.review_candidate_id ? String(body.review_candidate_id).trim() : '';
+  const action = body.action ? String(body.action).trim() : '';
+  const reviewer = body.reviewer ? String(body.reviewer).trim() : '';
+  const reviewerNote = body.reviewer_note ? String(body.reviewer_note).trim() : '';
+
+  if (!reviewCandidateId) {
+    throw badRequest('review_candidate_id_required', 'review_candidate_id is required');
+  }
+  if (!['auto_approve', 'manual_link', 'unlink', 'discontinue'].includes(action)) {
+    throw badRequest('manual_review_decision_action_invalid', 'action must be one of auto_approve, manual_link, unlink, discontinue');
+  }
+  if (!reviewer) {
+    throw badRequest('manual_review_reviewer_required', 'reviewer is required');
+  }
+
+  return {
+    data: await saveManualReviewDecision({
+      reviewCandidateId,
+      action,
+      reviewer,
+      reviewerNote
+    })
   };
 }

@@ -1,7 +1,13 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
-async function request(path) {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+async function request(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {})
+    }
+  });
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
@@ -55,5 +61,14 @@ export const manualReviewApi = {
   },
   getCandidate(reviewCandidateId) {
     return request(`/api/manual-review/candidates/${encodeURIComponent(reviewCandidateId)}`);
+  },
+  getDecision(reviewCandidateId) {
+    return request(`/api/manual-review/decisions/${encodeURIComponent(reviewCandidateId)}`);
+  },
+  saveDecision(payload) {
+    return request('/api/manual-review/decisions', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
   }
 };

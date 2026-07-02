@@ -1,9 +1,11 @@
 import { Router } from 'express';
 
 import {
+  getDecision,
   getCandidateDetail,
   getCandidateList,
-  getSummary
+  getSummary,
+  saveDecision
 } from './service.js';
 
 export const manualReviewRouter = Router();
@@ -24,6 +26,22 @@ manualReviewRouter.get('/summary', async (req, res, next) => {
   }
 });
 
+manualReviewRouter.get('/decisions/:reviewCandidateId', async (req, res, next) => {
+  try {
+    res.json(await getDecision(req.params.reviewCandidateId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+manualReviewRouter.post('/decisions', async (req, res, next) => {
+  try {
+    res.status(201).json(await saveDecision(req.body));
+  } catch (err) {
+    next(err);
+  }
+});
+
 manualReviewRouter.get('/candidates/:reviewCandidateId', async (req, res, next) => {
   try {
     res.json(await getCandidateDetail(req.params.reviewCandidateId));
@@ -33,9 +51,9 @@ manualReviewRouter.get('/candidates/:reviewCandidateId', async (req, res, next) 
 });
 
 manualReviewRouter.all('*', (req, res) => {
-  res.set('Allow', 'GET');
+  res.set('Allow', 'GET, POST');
   res.status(405).json({
     error: 'method_not_allowed',
-    message: 'Manual review v1 API is read-only and only supports GET.'
+    message: 'Manual review API supports GET plus POST /decisions for local decision storage.'
   });
 });

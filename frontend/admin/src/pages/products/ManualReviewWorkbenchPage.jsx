@@ -289,6 +289,227 @@ function DetailItem({ label, value }) {
   );
 }
 
+function CompareCard({ title, eyebrow, productName, optionName, fields = [], tone = '' }) {
+  return (
+    <article className={`manual-compare-card ${tone}`}>
+      <div className="manual-compare-card-head">
+        <span>{eyebrow}</span>
+        <strong>{title}</strong>
+      </div>
+      <div className="manual-compare-product">
+        <strong title={compactText(productName)}>{compactText(productName)}</strong>
+        <em title={compactText(optionName)}>{compactText(optionName)}</em>
+      </div>
+      <div className="manual-code-grid is-compact">
+        {fields.map((field) => (
+          <FieldPill key={field.label} label={field.label} value={field.value} featured={field.featured} />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function ManualQueueItem({ candidate, selected, onSelect }) {
+  const sourceConflict = candidate.risk_type === 'source_conflict';
+  const inactiveReview = isInactiveReviewScope(candidate.review_scope);
+  return (
+    <button
+      type="button"
+      className={`manual-queue-item ${selected ? 'is-selected' : ''} ${sourceConflict ? 'is-source-conflict' : ''} ${inactiveReview ? 'is-inactive-review' : ''}`}
+      onClick={onSelect}
+    >
+      <span className="manual-queue-item-topline">
+        <PriorityBadge row={candidate} />
+        <TinyBadge value={candidate.channel_code} tone="is-channel" />
+        <TinyBadge value={candidate.risk_type} metaMap={RISK_TYPE_META} tone="is-risk" />
+      </span>
+      <strong title={compactText(candidate.product_name_channel)}>
+        {compactText(candidate.product_name_channel)}
+      </strong>
+      <em title={compactText(candidate.option_name_channel)}>
+        {compactText(candidate.option_name_channel)}
+      </em>
+      <span className="manual-queue-item-meta">
+        <span>{metaLabel(candidate.review_scope, REVIEW_SCOPE_META)}</span>
+        <span>{metaLabel(candidate.suggested_action, ACTION_META)}</span>
+      </span>
+    </button>
+  );
+}
+
+function ManualSelectedOverview({ row }) {
+  if (!row) {
+    return (
+      <div className="empty-state">
+        <strong>선택된 후보가 없습니다.</strong>
+        <p>왼쪽 검수 큐에서 후보를 선택해 주세요.</p>
+      </div>
+    );
+  }
+
+  const riskDescription = metaDescription(row.risk_type, RISK_TYPE_META);
+  const evidenceDescription = metaDescription(row.evidence_level, EVIDENCE_LEVEL_META);
+  const actionDescription = metaDescription(row.suggested_action, ACTION_META);
+
+  return (
+    <>
+      {isInactiveReviewScope(row.review_scope) && <InactiveReviewNotice />}
+      <div className="manual-compare-card-grid">
+        <CompareCard
+          eyebrow="판매처 정보"
+          title={metaLabel(row.channel_code)}
+          productName={row.product_name_channel}
+          optionName={row.option_name_channel}
+          fields={[
+            { label: '상품코드', value: row.channel_product_code, featured: true },
+            { label: '옵션코드', value: row.channel_option_code, featured: true },
+            { label: '채널 SKU', value: row.channel_sku_code },
+            { label: '판매자 상품', value: row.seller_product_code }
+          ]}
+        />
+        <CompareCard
+          eyebrow="Selfpia 후보"
+          title={compactText(row.selfpia_sku_candidate || row.selfpia_sku_code)}
+          productName={row.product_name_selfpia}
+          optionName={row.option_name_selfpia}
+          tone="is-sellpia"
+          fields={[
+            { label: 'Selfpia 상품', value: row.selfpia_product_code },
+            { label: 'Selfpia SKU', value: row.selfpia_sku_candidate || row.selfpia_sku_code, featured: true },
+            { label: '자사 SKU 후보', value: row.own_sku_code_candidate },
+            { label: '로컬 자사 SKU', value: row.own_sku_code }
+          ]}
+        />
+      </div>
+
+      <section className="manual-evidence-panel">
+        <div className="manual-panel-title">
+          <span>검수 근거</span>
+          <h2>왜 사람이 봐야 하는가</h2>
+        </div>
+        <div className="manual-evidence-cards">
+          <div className="manual-explain-card is-risk">
+            <span>위험유형</span>
+            <strong>{metaLabel(row.risk_type, RISK_TYPE_META)}</strong>
+            <p>{riskDescription || riskReasonSummary(row)}</p>
+          </div>
+          <div className="manual-explain-card">
+            <span>근거수준</span>
+            <strong>{metaLabel(row.evidence_level, EVIDENCE_LEVEL_META)}</strong>
+            <p>{evidenceDescription || compactText(row.evidence_level)}</p>
+          </div>
+          <div className="manual-explain-card">
+            <span>추천 검토 방향</span>
+            <strong>{metaLabel(row.suggested_action, ACTION_META)}</strong>
+            <p>{actionDescription || compactText(row.suggested_action)}</p>
+          </div>
+        </div>
+        <div className="manual-risk-reason">
+          <span>한글 요약</span>
+          <strong>{riskReasonSummary(row)}</strong>
+          <span>risk_reason 원문</span>
+          <p>{compactText(row.risk_reason)}</p>
+        </div>
+      </section>
+    </>
+  );
+}
+
+const DECISION_ACTION_LABELS = {
+  auto_approve: '자동승인 후보 확정',
+  manual_link: '수동 연동',
+  unlink: '연동 끊기',
+  discontinue: '단종시키기'
+};
+
+const DECISION_STATUS_LABELS = {
+  approve_match: '매칭 승인',
+  hold: '보류',
+  exclude_candidate: '후보 제외',
+  inactive_reviewed: '비활성/단종 검토 완료',
+  needs_source_fix: '소스 보정 필요'
+};
+
+function formatDateTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('ko-KR', { hour12: false });
+}
+
+function ManualDecisionPanel({
+  row,
+  loading,
+  reviewer,
+  onReviewerChange,
+  onSaveDecision,
+  savingAction,
+  saveMessage,
+  savedDecision
+}) {
+  const priority = row ? PRIORITY_META[priorityFor(row)] : null;
+  const disabled = !row || !reviewer.trim() || Boolean(savingAction);
+  return (
+    <aside className="manual-decision-panel">
+      <div className="manual-panel-title">
+        <span>결정 패널</span>
+        <h2>선택 행 처리</h2>
+      </div>
+      <div className="manual-reviewer-card">
+        <label>
+          <span>검수자</span>
+          <input
+            value={reviewer}
+            onChange={(event) => onReviewerChange(event.target.value)}
+            placeholder="검수자 이름"
+          />
+        </label>
+        <p>결정은 local/test DB의 수동검수 결정 테이블에만 저장됩니다. 운영 매핑/삭제는 바로 적용하지 않습니다.</p>
+      </div>
+      <div className="manual-decision-actions">
+        {Object.entries(DECISION_ACTION_LABELS).map(([action, label]) => (
+          <button
+            key={action}
+            type="button"
+            disabled={disabled}
+            onClick={() => onSaveDecision(action)}
+          >
+            {savingAction === action ? '저장 중...' : label}
+          </button>
+        ))}
+      </div>
+      <div className="manual-impact-card">
+        <span>처리 영향</span>
+        {row ? (
+          <>
+            <strong>{priority?.label || '검토 필요'}</strong>
+            <p>{priority?.description || '선택한 후보의 검토 방향을 확인하세요.'}</p>
+            <dl>
+              <DetailItem label="검토 범위" value={metaLabel(row.review_scope, REVIEW_SCOPE_META)} />
+              <DetailItem label="추천 액션" value={metaLabel(row.suggested_action, ACTION_META)} />
+              <DetailItem label="소스 상태" value={metaLabel(row.source_status, SOURCE_STATUS_META)} />
+            </dl>
+          </>
+        ) : (
+          <p>후보를 선택하면 처리 영향이 표시됩니다.</p>
+        )}
+      </div>
+      {savedDecision && (
+        <div className="manual-saved-card">
+          <span>최근 저장</span>
+          <strong>{DECISION_ACTION_LABELS[savedDecision.decision_reason] || DECISION_STATUS_LABELS[savedDecision.decision_status] || savedDecision.decision_status}</strong>
+          <p>{formatDateTime(savedDecision.decided_at)} · {savedDecision.reviewer}</p>
+        </div>
+      )}
+      <div className="manual-write-status">
+        {savingAction
+          ? 'DB에 결정 기록을 저장하는 중입니다.'
+          : saveMessage || (loading ? '상세 정보 조회 중...' : '아직 저장된 작업이 없습니다.')}
+      </div>
+    </aside>
+  );
+}
+
 function InactiveReviewNotice() {
   return (
     <div className="manual-inactive-notice" role="note">
@@ -395,11 +616,8 @@ function CandidateDetailPanel({ candidate, detail, loading, error }) {
             </div>
           </DetailGroup>
 
-          <div className="manual-disabled-actions" aria-label="저장 기능 없음">
-            <button type="button" disabled>승인 v2 저장 기능 예정</button>
-            <button type="button" disabled>보류 v2 저장 기능 예정</button>
-            <button type="button" disabled>제외 v2 저장 기능 예정</button>
-            <span>보기 전용 화면입니다. 검수 결과는 저장되지 않습니다.</span>
+          <div className="manual-disabled-actions" aria-label="상세 비교 안내">
+            <span>상세 비교 영역입니다. 결정 저장은 오른쪽 결정 패널의 4개 버튼으로 진행합니다.</span>
           </div>
         </>
       )}
@@ -421,6 +639,11 @@ export function ManualReviewWorkbenchPage() {
   const [detailsById, setDetailsById] = useState({});
   const [detailLoadingId, setDetailLoadingId] = useState('');
   const [detailErrors, setDetailErrors] = useState({});
+  const [decisionsById, setDecisionsById] = useState({});
+  const [decisionLoadingId, setDecisionLoadingId] = useState('');
+  const [savingAction, setSavingAction] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
+  const [reviewer, setReviewer] = useState(() => window.localStorage.getItem('manualReviewReviewer') || '혜인');
   const requestSeq = useRef(0);
 
   useEffect(() => {
@@ -458,8 +681,13 @@ export function ManualReviewWorkbenchPage() {
     manualReviewApi.listCandidates(toApiQuery(query))
       .then((result) => {
         if (requestSeq.current !== seq) return;
-        setRows(result.data || []);
-        setExpandedId('');
+        const nextRows = result.data || [];
+        setRows(nextRows);
+        setExpandedId((current) => (
+          nextRows.some((row) => row.review_candidate_id === current)
+            ? current
+            : nextRows[0]?.review_candidate_id || ''
+        ));
       })
       .catch((err) => {
         if (requestSeq.current !== seq) return;
@@ -503,14 +731,8 @@ export function ManualReviewWorkbenchPage() {
     setSearchParams({ limit: String(DEFAULT_LIMIT), offset: '0' });
   }
 
-  async function toggleDetail(candidate) {
-    if (expandedId === candidate.review_candidate_id) {
-      setExpandedId('');
-      return;
-    }
-
+  async function loadCandidateDetail(candidate) {
     const id = candidate.review_candidate_id;
-    setExpandedId(id);
     if (detailsById[id] || detailLoadingId === id) {
       return;
     }
@@ -527,6 +749,74 @@ export function ManualReviewWorkbenchPage() {
     }
   }
 
+  async function loadCandidateDecision(candidate) {
+    const id = candidate.review_candidate_id;
+    if (decisionsById[id] !== undefined || decisionLoadingId === id) {
+      return;
+    }
+
+    setDecisionLoadingId(id);
+    try {
+      const result = await manualReviewApi.getDecision(id);
+      setDecisionsById((current) => ({ ...current, [id]: result.data || null }));
+    } catch {
+      setDecisionsById((current) => ({ ...current, [id]: null }));
+    } finally {
+      setDecisionLoadingId('');
+    }
+  }
+
+  function selectCandidate(candidate) {
+    const id = candidate.review_candidate_id;
+    setExpandedId(id);
+    loadCandidateDetail(candidate);
+    loadCandidateDecision(candidate);
+    setSaveMessage('');
+  }
+
+  useEffect(() => {
+    if (!expandedId) return;
+    const candidate = rows.find((row) => row.review_candidate_id === expandedId);
+    if (candidate) {
+      loadCandidateDetail(candidate);
+      loadCandidateDecision(candidate);
+    }
+  }, [expandedId, rows]);
+
+  function updateReviewer(value) {
+    setReviewer(value);
+    window.localStorage.setItem('manualReviewReviewer', value);
+  }
+
+  async function saveDecision(action) {
+    if (!selectedRow || !selectedId) {
+      setSaveMessage('먼저 검수 큐에서 후보를 선택하세요.');
+      return;
+    }
+    const reviewerName = reviewer.trim();
+    if (!reviewerName) {
+      setSaveMessage('검수자 이름을 입력한 뒤 저장하세요.');
+      return;
+    }
+
+    setSavingAction(action);
+    setSaveMessage('');
+    try {
+      const result = await manualReviewApi.saveDecision({
+        review_candidate_id: selectedId,
+        action,
+        reviewer: reviewerName,
+        reviewer_note: `${DECISION_ACTION_LABELS[action]} 버튼으로 저장`
+      });
+      setDecisionsById((current) => ({ ...current, [selectedId]: result.data }));
+      setSaveMessage(`${DECISION_ACTION_LABELS[action]} 결정이 DB에 저장되었습니다.`);
+    } catch (err) {
+      setSaveMessage(`저장 실패: ${err.message}`);
+    } finally {
+      setSavingAction('');
+    }
+  }
+
   const manualMatchCount = countFor(summary, 'by_review_scope', 'manual_matching_candidate');
   const inactiveReviewCount = countFor(summary, 'by_review_scope', 'deletion_or_inactive_review_candidate');
   const hasPrevious = query.offset > 0;
@@ -537,6 +827,13 @@ export function ManualReviewWorkbenchPage() {
   const currentScopeMeta = query.review_scope
     ? REVIEW_SCOPE_META[query.review_scope]
     : { label: '전체 후보', description: '수동매칭 후보와 삭제/비활성 검토 후보를 함께 보는 화면입니다.' };
+  const selectedCandidate = rows.find((row) => row.review_candidate_id === expandedId) || rows[0] || null;
+  const selectedId = selectedCandidate?.review_candidate_id || '';
+  const selectedDetail = selectedId ? detailsById[selectedId] : null;
+  const selectedRow = selectedDetail || selectedCandidate;
+  const selectedLoading = Boolean(selectedId && detailLoadingId === selectedId);
+  const selectedError = selectedId ? detailErrors[selectedId] : '';
+  const selectedDecision = selectedId ? decisionsById[selectedId] : null;
 
   return (
     <section className="page manual-review-page">
@@ -545,15 +842,15 @@ export function ManualReviewWorkbenchPage() {
           <h1>수동검수 워크벤치</h1>
           <p>자동매칭 후 남은 후보를 읽기 전용으로 확인하는 v1 화면입니다.</p>
         </div>
-        <button className="button disabled" type="button" disabled title="보기 전용: 저장 기능 없음">
-          저장 기능 없음
+        <button className="button disabled" type="button" disabled title="결정 저장은 local/test DB에만 기록됩니다.">
+          결정 저장 local-only
         </button>
       </div>
 
       <div className="readonly-banner readonly-banner-strong manual-readonly-banner" role="note">
-        <strong>현재는 보기 전용입니다.</strong>
-        <span>저장 기능 없음, 운영 DB 반영 아님, GET API만 호출합니다.</span>
-        <span>승인/보류/제외 처리는 v2 예정이며 지금은 검수 결과를 저장하지 않습니다.</span>
+        <strong>결정 저장은 local/test DB에만 기록됩니다.</strong>
+        <span>운영 DB 반영, 상품 삭제, 채널 비활성, 매핑 덮어쓰기는 하지 않습니다.</span>
+        <span>오른쪽 결정 패널의 4개 버튼은 수동검수 결정 기록만 저장합니다.</span>
       </div>
 
       {summaryError && <div className="notice error">Summary 조회 실패: {summaryError}</div>}
@@ -658,116 +955,57 @@ export function ManualReviewWorkbenchPage() {
       {error && <div className="notice error">후보 조회 실패: {error}</div>}
       {loading && !error && <div className="notice">수동검수 후보를 불러오는 중입니다.</div>}
 
-      <section className="manual-list" aria-busy={loading}>
-        {!loading && rows.map((candidate) => {
-          const expanded = expandedId === candidate.review_candidate_id;
-          const riskDescription = metaDescription(candidate.risk_type, RISK_TYPE_META);
-          const actionDescription = metaDescription(candidate.suggested_action, ACTION_META);
-          const reasonSummary = riskReasonSummary(candidate);
-          const sourceConflict = candidate.risk_type === 'source_conflict';
-          const inactiveReview = isInactiveReviewScope(candidate.review_scope);
-
-          return (
-            <article
-              className={`manual-candidate-row ${expanded ? 'is-expanded' : ''} ${sourceConflict ? 'is-source-conflict' : ''} ${inactiveReview ? 'is-inactive-review' : ''}`}
-              key={candidate.review_candidate_id}
-            >
-              <button
-                className="manual-candidate-main"
-                type="button"
-                onClick={() => toggleDetail(candidate)}
-                aria-expanded={expanded}
-              >
-                <div className="manual-candidate-head">
-                  <div className="manual-candidate-topline">
-                    <PriorityBadge row={candidate} />
-                    <ScopeBadge value={candidate.review_scope} />
-                    <TinyBadge value={candidate.channel_code} tone="is-channel" />
-                    <TinyBadge value={candidate.risk_type} metaMap={RISK_TYPE_META} tone="is-risk" />
-                    <TinyBadge value={candidate.evidence_level} metaMap={EVIDENCE_LEVEL_META} />
-                    <TinyBadge value={candidate.source_status} metaMap={SOURCE_STATUS_META} />
-                  </div>
-                  <span className="manual-expand-indicator">{expanded ? '접기' : '상세 보기'}</span>
-                </div>
-
-                <div className="manual-candidate-title-row">
-                  <div>
-                    <span>채널 상품</span>
-                    <strong title={compactText(candidate.product_name_channel)}>
-                      {compactText(candidate.product_name_channel)}
-                    </strong>
-                    <em title={compactText(candidate.option_name_channel)}>
-                      {compactText(candidate.option_name_channel)}
-                    </em>
-                  </div>
-                  <div>
-                    <span>Selfpia 후보</span>
-                    <strong title={compactText(candidate.product_name_selfpia)}>
-                      {compactText(candidate.product_name_selfpia)}
-                    </strong>
-                    <em title={compactText(candidate.option_name_selfpia)}>
-                      {compactText(candidate.option_name_selfpia)}
-                    </em>
-                  </div>
-                </div>
-
-                <div className="manual-row-explainer">
-                  <div>
-                    <span>왜 검토?</span>
-                    <strong>{metaLabel(candidate.risk_type, RISK_TYPE_META)}</strong>
-                    <p>{sourceConflict ? '같은 채널 코드 또는 유사 근거가 여러 Selfpia 후보와 연결될 가능성이 있어 자동확정에서 제외되었습니다.' : riskDescription || reasonSummary}</p>
-                  </div>
-                  <div>
-                    <span>추천 검토 방향</span>
-                    <strong>{metaLabel(candidate.suggested_action, ACTION_META)}</strong>
-                    <p>{actionDescription || compactText(candidate.suggested_action)}</p>
-                  </div>
-                </div>
-
-                {(sourceConflict || inactiveReview) && (
-                  <div className={`manual-row-help ${sourceConflict ? 'is-conflict' : 'is-inactive'}`}>
-                    {sourceConflict ? (
-                      <>
-                        <strong>충돌 후보 확인 포인트</strong>
-                        <span>채널 상품/옵션 코드, 자사 SKU 후보, Selfpia SKU 후보가 한 상품으로 모이는지 비교하세요.</span>
-                      </>
-                    ) : (
-                      <>
-                        <strong>삭제/비활성 검토 안내</strong>
-                        <span>삭제 확정이 아니라 운영 여부 확인입니다. 미매칭 = 삭제 대상이 아닙니다.</span>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                <div className="manual-code-grid">
-                  <FieldPill label="채널 상품코드" value={candidate.channel_product_code} featured />
-                  <FieldPill label="채널 옵션코드" value={candidate.channel_option_code} featured />
-                  <FieldPill label="판매자 상품코드" value={candidate.seller_product_code} />
-                  <FieldPill label="자사 SKU 후보" value={candidate.own_sku_code_candidate} />
-                  <FieldPill label="Selfpia SKU 후보" value={candidate.selfpia_sku_candidate} featured />
-                  <FieldPill label="소스 상태" value={metaLabel(candidate.source_status, SOURCE_STATUS_META)} />
-                </div>
-              </button>
-
-              {expanded && (
-                <CandidateDetailPanel
-                  candidate={candidate}
-                  detail={detailsById[candidate.review_candidate_id]}
-                  loading={detailLoadingId === candidate.review_candidate_id}
-                  error={detailErrors[candidate.review_candidate_id]}
-                />
-              )}
-            </article>
-          );
-        })}
-
-        {!loading && rows.length === 0 && !error && (
-          <div className="empty-state">
-            <strong>조회된 후보가 없습니다.</strong>
-            <p>필터를 줄이거나 검색어를 비워 다시 조회해 주세요.</p>
+      <section className="manual-review-workspace" aria-busy={loading}>
+        <aside className="manual-queue-panel">
+          <div className="manual-panel-title">
+            <span>검수 큐</span>
+            <h2>우선 처리 목록</h2>
           </div>
-        )}
+          <div className="manual-queue-list">
+            {!loading && rows.map((candidate) => (
+              <ManualQueueItem
+                key={candidate.review_candidate_id}
+                candidate={candidate}
+                selected={candidate.review_candidate_id === selectedId}
+                onSelect={() => selectCandidate(candidate)}
+              />
+            ))}
+          </div>
+          {!loading && rows.length === 0 && !error && (
+            <div className="empty-state">
+              <strong>조회된 후보가 없습니다.</strong>
+              <p>필터를 줄이거나 검색어를 비워 다시 조회해 주세요.</p>
+            </div>
+          )}
+        </aside>
+
+        <section className="manual-compare-panel">
+          <div className="manual-panel-title">
+            <span>선택 상품 비교</span>
+            <h2>판매처 정보와 Selfpia 후보</h2>
+          </div>
+          {selectedError && <div className="notice error">상세 조회 실패: {selectedError}</div>}
+          <ManualSelectedOverview row={selectedRow} />
+          {selectedRow && (
+            <CandidateDetailPanel
+              candidate={selectedCandidate}
+              detail={selectedDetail}
+              loading={selectedLoading}
+              error={selectedError}
+            />
+          )}
+        </section>
+
+        <ManualDecisionPanel
+          row={selectedRow}
+          loading={selectedLoading || Boolean(decisionLoadingId)}
+          reviewer={reviewer}
+          onReviewerChange={updateReviewer}
+          onSaveDecision={saveDecision}
+          savingAction={savingAction}
+          saveMessage={saveMessage}
+          savedDecision={selectedDecision}
+        />
       </section>
 
       <div className="manual-pagination" aria-label="페이지 이동">

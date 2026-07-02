@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -119,6 +120,29 @@ async function assertLocalReadOnly(client) {
   }
 }
 
+async function assertLocalWriteAllowed(client) {
+  const result = await client.query(`
+    SELECT
+      current_database() AS current_database,
+      current_user AS current_user,
+      current_setting('transaction_read_only') AS transaction_read_only
+  `);
+  const guard = result.rows[0];
+
+  if (
+    guard.current_database !== 'product_ops_test'
+    || guard.current_user !== 'product_ops_tester'
+    || guard.transaction_read_only !== 'off'
+    || process.env.NODE_ENV !== 'development'
+  ) {
+    throw new AppError(
+      403,
+      'manual_review_local_write_guard_failed',
+      'Manual review decision writes are restricted to local product_ops_test as product_ops_tester in development mode.'
+    );
+  }
+}
+
 async function readOnlyQuery(text, params = []) {
   const client = await pool.connect();
 
@@ -138,6 +162,141 @@ async function readOnlyQuery(text, params = []) {
   } finally {
     client.release();
   }
+}
+
+async function writeLocalDecision(callback) {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await assertLocalWriteAllowed(client);
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // Ignore rollback failures so the original error remains visible.
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureDecisionSchema(client) {
+  await client.query(`
+    CREATE SCHEMA IF NOT EXISTS product_code_review;
+
+    CREATE TABLE IF NOT EXISTS product_code_review.manual_review_decision (
+      decision_id uuid PRIMARY KEY,
+      review_candidate_id text NOT NULL,
+      review_scope text NOT NULL,
+      channel_code text NOT NULL,
+      channel_product_code text,
+      channel_option_code text,
+      suggested_sku_id uuid,
+      suggested_selfpia_sku text,
+      decision_status text NOT NULL,
+      decision_reason text,
+      reviewer_note text,
+      reviewer text NOT NULL,
+      decided_at timestamptz NOT NULL DEFAULT now(),
+      source_risk_type text,
+      source_evidence_level text,
+      source_suggested_action text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+
+      CONSTRAINT manual_review_decision_review_scope_chk
+        CHECK (review_scope IN (
+          'manual_matching_candidate',
+          'deletion_or_inactive_review_candidate'
+        )),
+
+      CONSTRAINT manual_review_decision_status_chk
+        CHECK (decision_status IN (
+          'approve_match',
+          'hold',
+          'exclude_candidate',
+          'inactive_reviewed',
+          'needs_source_fix'
+        )),
+
+      CONSTRAINT manual_review_decision_scope_status_chk
+        CHECK (
+          (review_scope = 'manual_matching_candidate'
+            AND decision_status IN (
+              'approve_match',
+              'hold',
+              'exclude_candidate',
+              'needs_source_fix'
+            ))
+          OR
+          (review_scope = 'deletion_or_inactive_review_candidate'
+            AND decision_status IN (
+              'hold',
+              'exclude_candidate',
+              'inactive_reviewed',
+              'needs_source_fix'
+            ))
+        ),
+
+      CONSTRAINT manual_review_decision_candidate_unique
+        UNIQUE (review_candidate_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS manual_review_decision_status_idx
+      ON product_code_review.manual_review_decision (decision_status);
+
+    CREATE INDEX IF NOT EXISTS manual_review_decision_scope_idx
+      ON product_code_review.manual_review_decision (review_scope);
+
+    CREATE INDEX IF NOT EXISTS manual_review_decision_channel_idx
+      ON product_code_review.manual_review_decision (channel_code);
+
+    CREATE INDEX IF NOT EXISTS manual_review_decision_decided_at_idx
+      ON product_code_review.manual_review_decision (decided_at DESC);
+  `);
+}
+
+function uuidOrNull(value) {
+  const text = value ? String(value).trim() : '';
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text)
+    ? text
+    : null;
+}
+
+function decisionStatusForAction(action, candidate) {
+  if (action === 'auto_approve' || action === 'manual_link') {
+    return 'approve_match';
+  }
+  if (action === 'unlink') {
+    return 'exclude_candidate';
+  }
+  if (action === 'discontinue') {
+    return candidate.review_scope === 'deletion_or_inactive_review_candidate'
+      ? 'inactive_reviewed'
+      : 'exclude_candidate';
+  }
+  return null;
+}
+
+async function getCandidateByIdInTransaction(client, reviewCandidateId) {
+  const result = await client.query(
+    `
+    ${loadWorkbenchCte()}
+    SELECT
+      ${CANDIDATE_COLUMNS}
+    FROM workbench_candidates AS wc
+    WHERE wc.review_candidate_id = $1
+    LIMIT 1
+    `,
+    [reviewCandidateId]
+  );
+
+  return result.rows[0] || null;
 }
 
 function buildCandidateWhere({ filters = {}, search = null }) {
@@ -264,4 +423,133 @@ export async function getManualReviewSummary() {
     by_suggested_action: byDimension.get('suggested_action') || [],
     by_source_status: byDimension.get('source_status') || []
   };
+}
+
+export async function getManualReviewDecisionByCandidateId(reviewCandidateId) {
+  const tableCheck = await readOnlyQuery(
+    `SELECT to_regclass('product_code_review.manual_review_decision') AS table_name`
+  );
+
+  if (!tableCheck.rows[0]?.table_name) {
+    return null;
+  }
+
+  const result = await readOnlyQuery(
+    `
+    SELECT
+      decision_id,
+      review_candidate_id,
+      review_scope,
+      channel_code,
+      channel_product_code,
+      channel_option_code,
+      suggested_sku_id,
+      suggested_selfpia_sku,
+      decision_status,
+      decision_reason,
+      reviewer_note,
+      reviewer,
+      decided_at,
+      source_risk_type,
+      source_evidence_level,
+      source_suggested_action,
+      created_at,
+      updated_at
+    FROM product_code_review.manual_review_decision
+    WHERE review_candidate_id = $1
+    LIMIT 1
+    `,
+    [reviewCandidateId]
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function saveManualReviewDecision({
+  reviewCandidateId,
+  action,
+  reviewer,
+  reviewerNote = ''
+}) {
+  return writeLocalDecision(async (client) => {
+    await ensureDecisionSchema(client);
+    const candidate = await getCandidateByIdInTransaction(client, reviewCandidateId);
+    if (!candidate) {
+      throw new AppError(
+        404,
+        'manual_review_candidate_not_found',
+        `Manual review candidate not found: ${reviewCandidateId}`
+      );
+    }
+
+    const decisionStatus = decisionStatusForAction(action, candidate);
+    if (!decisionStatus) {
+      throw new AppError(400, 'manual_review_decision_action_invalid', `Unsupported decision action: ${action}`);
+    }
+
+    const result = await client.query(
+      `
+      INSERT INTO product_code_review.manual_review_decision (
+        decision_id,
+        review_candidate_id,
+        review_scope,
+        channel_code,
+        channel_product_code,
+        channel_option_code,
+        suggested_sku_id,
+        suggested_selfpia_sku,
+        decision_status,
+        decision_reason,
+        reviewer_note,
+        reviewer,
+        decided_at,
+        source_risk_type,
+        source_evidence_level,
+        source_suggested_action,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7::uuid, $8, $9, $10, $11, $12, now(), $13, $14, $15, now(), now()
+      )
+      ON CONFLICT (review_candidate_id) DO UPDATE
+      SET
+        review_scope = EXCLUDED.review_scope,
+        channel_code = EXCLUDED.channel_code,
+        channel_product_code = EXCLUDED.channel_product_code,
+        channel_option_code = EXCLUDED.channel_option_code,
+        suggested_sku_id = EXCLUDED.suggested_sku_id,
+        suggested_selfpia_sku = EXCLUDED.suggested_selfpia_sku,
+        decision_status = EXCLUDED.decision_status,
+        decision_reason = EXCLUDED.decision_reason,
+        reviewer_note = EXCLUDED.reviewer_note,
+        reviewer = EXCLUDED.reviewer,
+        decided_at = now(),
+        source_risk_type = EXCLUDED.source_risk_type,
+        source_evidence_level = EXCLUDED.source_evidence_level,
+        source_suggested_action = EXCLUDED.source_suggested_action,
+        updated_at = now()
+      RETURNING *
+      `,
+      [
+        randomUUID(),
+        candidate.review_candidate_id,
+        candidate.review_scope,
+        candidate.channel_code,
+        candidate.channel_product_code,
+        candidate.channel_option_code,
+        uuidOrNull(candidate.matched_sku_id_candidate),
+        candidate.selfpia_sku_candidate || candidate.selfpia_sku_code || null,
+        decisionStatus,
+        action,
+        reviewerNote,
+        reviewer,
+        candidate.risk_type,
+        candidate.evidence_level,
+        candidate.suggested_action
+      ]
+    );
+
+    return result.rows[0];
+  });
 }
