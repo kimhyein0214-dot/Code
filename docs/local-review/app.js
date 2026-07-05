@@ -346,6 +346,10 @@ function writeAccessMessage() {
   return "";
 }
 
+function authRedirectUrl() {
+  return config.authRedirectUrl || window.location.href.split("#")[0];
+}
+
 function renderWriteSensitiveViews() {
   renderAuthPanel();
   if (selectedRow) renderDecisionControls(selectedRow);
@@ -393,7 +397,7 @@ function renderAuthPanel() {
     const { error } = await supabaseClient.auth.signInWithOtp({
       email: targetEmail,
       options: {
-        emailRedirectTo: window.location.href.split("#")[0],
+        emailRedirectTo: authRedirectUrl(),
       },
     });
     if (error) {

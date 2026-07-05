@@ -5,6 +5,7 @@ window.SYSTEM_V1_CONFIG = {
   detailsView: "match_candidate_details_full",
   appMode: "review",
   requireAuthForWrites: true,
+  authRedirectUrl: "https://kimhyein0214-dot.github.io/Code/local-review/",
   loadAllRows: false,
   supabasePageSize: 1000,
   defaultVisibleChannels: ["smartstore", "makeshop", "ably", "coupang", "playauto"],
