@@ -1654,6 +1654,7 @@ th.sticky-col {
   max-width: 112px;
 }
 
+th.sticky-sellpia-image,
 th.sticky-sellpia-code,
 th.sticky-sellpia-product,
 th.sticky-sellpia-option,
@@ -2029,28 +2030,37 @@ td.channel-cell span {
   max-width: 190px;
 }
 
+.sticky-sellpia-image {
+  left: 0;
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+  text-align: center;
+}
+
 .sticky-sellpia-code {
+  left: 72px;
   width: 112px;
   min-width: 112px;
   max-width: 112px;
 }
 
 .sticky-sellpia-product {
-  left: 112px;
+  left: 184px;
   width: 180px;
   min-width: 180px;
   max-width: 180px;
 }
 
 .sticky-sellpia-option {
-  left: 292px;
+  left: 364px;
   width: 150px;
   min-width: 150px;
   max-width: 150px;
 }
 
 .sticky-sellpia-status {
-  left: 442px;
+  left: 514px;
   width: 100px;
   min-width: 100px;
   max-width: 100px;
@@ -2063,14 +2073,14 @@ td.channel-cell span {
 }
 
 .matrix-sheet-scroll.is-scrolled .sticky-sellpia-option {
-  left: 224px;
+  left: 296px;
   width: 104px;
   min-width: 104px;
   max-width: 104px;
 }
 
 .matrix-sheet-scroll.is-scrolled .sticky-sellpia-status {
-  left: 328px;
+  left: 400px;
 }
 
 .code-blank-cell {
@@ -3203,6 +3213,7 @@ select,
 
 .manual-review-row {
   display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
   gap: 6px;
   width: 100%;
   padding: 11px;
@@ -3211,6 +3222,33 @@ select,
   background: #ffffff;
   color: #172033;
   text-align: left;
+}
+
+.manual-review-row-thumb {
+  display: grid;
+  grid-row: 1 / span 5;
+  place-items: center;
+  width: 54px;
+  min-height: 54px;
+}
+
+.manual-review-row-thumb .table-thumb {
+  width: 50px;
+  height: 50px;
+}
+
+.manual-review-row-thumb .muted {
+  font-size: 10px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.manual-review-row-top,
+.manual-review-row-title,
+.manual-review-row-option,
+.manual-review-row-policy,
+.manual-review-row-badges {
+  grid-column: 2;
 }
 
 .manual-review-row:hover,
@@ -3275,6 +3313,18 @@ select,
   border: 1px solid #d8e2ef;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.manual-card .image-asset {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+  padding: 10px;
+}
+
+.manual-card .image-asset img {
+  width: min(180px, 100%);
+  height: 180px;
 }
 
 .manual-card-title strong {

@@ -121,6 +121,7 @@ const SAMPLE_BATCH_IDS = [
   "sample_playauto_500",
 ];
 const ABLY_FINAL_EXCLUSION_URL = config.ablyFinalExclusionUrl || "data/ably_final_exclusion_20260624.json";
+const IMAGE_ASSET_LOOKUP_BATCH_SIZE = 400;
 
 let supabaseClient = null;
 let authSession = null;
@@ -1492,21 +1493,23 @@ function sellpiaStockOverrideFor(apply, compare) {
 async function loadImageAssets(rows) {
   const codes = [
     ...new Set(rows.map((row) => row.best_sellpia_sku_code).filter(Boolean)),
-  ].slice(0, 500);
+  ];
 
   imageMap = new Map();
   if (!codes.length) return;
 
-  const { data, error } = await supabaseClient
-    .from("sellpia_product_images_public")
-    .select("p_code,original_file_name,storage_public_url,source_image_url,upload_status")
-    .in("p_code", codes);
+  for (const codeChunk of chunkArray(codes, IMAGE_ASSET_LOOKUP_BATCH_SIZE)) {
+    const { data, error } = await supabaseClient
+      .from("sellpia_product_images_public")
+      .select("p_code,original_file_name,storage_public_url,source_image_url,upload_status")
+      .in("p_code", codeChunk);
 
-  if (error) {
-    console.warn("image asset lookup failed", error);
-    return;
+    if (error) {
+      console.warn("image asset lookup failed", error);
+      continue;
+    }
+    (data || []).forEach((row) => imageMap.set(row.p_code, row));
   }
-  (data || []).forEach((row) => imageMap.set(row.p_code, row));
 }
 
 async function loadDetails(queueId) {
@@ -1660,7 +1663,7 @@ function workflowBucket(row) {
   if (/(세트|조합|bundle|set\b)/i.test(text)) return "bundle";
   if (/(보조옵션|보조 옵션|하위옵션|suboption|추가상품)/i.test(text)) return "suboption";
   if (/(코드 근거|코드공란|코드 공란|자사코드 공란|code blank|blank code)/i.test(text)) return "code_blank";
-  if (["AUTO_APPROVE_CANDIDATE", "MANUAL_LINKED"].includes(row?.match_tier)) return "candidate";
+  if (["AUTO_APPROVE_CANDIDATE", "FAST_REVIEW", "MANUAL_LINKED"].includes(row?.match_tier)) return "candidate";
   if (stockStatusForRow(row) === "STOCK_MATCH") return "stock_match";
   if (stockStatusForRow(row) === "STOCK_DIFF") return "stock_diff";
   if (stockStatusForRow(row) === "STOCK_SMARTSTORE_NOT_FOUND") return "stock_missing";
@@ -2399,6 +2402,9 @@ function renderTable() {
     tr.dataset.workflowBucket = groupWorkflowBucket(group);
     tr.dataset.pageIndex = String(pageIndex);
     tr.innerHTML = `
+      <td class="sticky-col sticky-sellpia-image">
+        ${image ? renderImageThumb(image) : "<span class='muted'>없음</span>"}
+      </td>
       <td class="sticky-col sticky-sellpia-code">
         ${renderEditableValue(row, "best_sellpia_sku_code", group.best_sellpia_sku_code || group.best_sellpia_product_code || "-", "strong")}
         ${ownCodeForRow(row) ? `<em class="own-code-badge is-sellpia">자사 ${escapeHtml(ownCodeForRow(row))}</em>` : ""}
@@ -2420,7 +2426,6 @@ function renderTable() {
         ${linkDecisionBadge(row)}
       </td>
       ${renderChannelCells(group)}
-      <td>${image ? renderImageThumb(image) : "<span class='muted'>없음</span>"}</td>
       <td>${Number(group.duplicate_candidate_count || 0).toLocaleString()}</td>
     `;
     tr.addEventListener("click", (event) => {
@@ -6679,7 +6684,10 @@ function isAutoApprovalCandidate(row) {
   const policy = policyApprovalTier(row);
   return (
     row?.match_tier === "AUTO_APPROVE_CANDIDATE" ||
+    row?.match_tier === "FAST_REVIEW" ||
     policy?.tier === "AUTO_APPROVE_CANDIDATE" ||
+    policy?.tier === "APPROVAL_CANDIDATE_CODE_EVIDENCE_WEAK" ||
+    policy?.tier === "FAST_REVIEW_REQUIRED" ||
     /자동승인|auto.?approve/i.test([policy?.label, row?.recommended_action, row?.match_reason].join(" "))
   );
 }
@@ -6730,7 +6738,7 @@ function manualReviewBaseRows() {
 
 function renderManualReviewSummary() {
   if (queueSummary?.totals && summaryChannels()?.length) {
-    updateTextById("manualAutoCandidateCount", sumSummaryField("auto_candidate_rows"));
+    updateTextById("manualAutoCandidateCount", sumSummaryField("auto_candidate_rows") + sumSummaryField("fast_review_rows"));
     updateTextById("manualFastReviewCount", sumSummaryField("fast_review_rows"));
     updateTextById("manualConflictCount", sumSummaryField("conflict_rows"));
     updateTextById("manualAblyDiscontinueCount", queueSummary.by_channel?.ably?.workflow_excluded_rows || 0);
@@ -6775,8 +6783,12 @@ function renderManualReviewList() {
   els.list.innerHTML = rows.slice(0, 300).map((row) => {
     const selected = String(row.queue_id) === String(manualReviewSelectedQueueId);
     const policy = policyApprovalTier(row);
+    const image = rowImage(row);
     return `
       <button type="button" class="manual-review-row ${selected ? "is-selected" : ""}" data-manual-review-row="${escapeHtml(row.queue_id)}">
+        <span class="manual-review-row-thumb">
+          ${image ? renderImageThumb(image) : "<span class='muted'>No image</span>"}
+        </span>
         <span class="manual-review-row-top">
           <strong>${escapeHtml(row.channel_product_code || row.channel_seller_code || row.queue_id)}</strong>
           <em>${escapeHtml(row.best_sellpia_sku_code || row.best_sellpia_product_code || "Sellpia 미지정")}</em>
@@ -6852,7 +6864,6 @@ function renderManualReviewSelected() {
         <strong>${escapeHtml(channelName(row.source_channel))}</strong>
         ${manualReviewBadges(row)}
       </div>
-      ${renderImageAsset(image)}
       ${manualCardFields([
         ["판매처 상품코드", row.channel_product_code],
         ["판매처 옵션코드", row.channel_option_code],
@@ -6870,6 +6881,7 @@ function renderManualReviewSelected() {
         <strong>Sellpia 후보</strong>
         <span class="linking-status-badge is-auto">${escapeHtml(policy.label || "-")}</span>
       </div>
+      ${renderImageAsset(image)}
       ${manualCardFields([
         ["Sellpia 상품코드", row.best_sellpia_product_code],
         ["Sellpia 옵션코드", row.best_sellpia_sku_code],
@@ -7753,12 +7765,12 @@ function renderTableHeader() {
     .join("");
 
   queueTableHeadRow.innerHTML = `
+    <th class="sticky-col sticky-sellpia-image" data-channel="sellpia">이미지</th>
     <th class="sticky-col sticky-sellpia-code" data-channel="sellpia">Sellpia 코드</th>
     <th class="sticky-col sticky-sellpia-product sellpia-col">Sellpia 상품명</th>
     <th class="sticky-col sticky-sellpia-option sellpia-col">Sellpia 옵션명</th>
     <th class="sticky-col sticky-sellpia-status">상태</th>
     ${sellerColumns}
-    <th>이미지</th>
     <th>중복 후보</th>
   `;
 }
