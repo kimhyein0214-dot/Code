@@ -129,6 +129,7 @@ let authReady = false;
 let reviewWriterAllowed = false;
 let reviewWriterStatusMessage = "";
 let queueRows = [];
+let queueSummary = null;
 let detailCache = new Map();
 let imageMap = new Map();
 let availableTags = [];
@@ -563,6 +564,35 @@ async function loadTags() {
   renderTagControls();
 }
 
+function numeric(value) {
+  return Number(value || 0);
+}
+
+function summaryChannels() {
+  if (!queueSummary?.by_channel) return null;
+  return [...visibleChannels]
+    .map((channel) => queueSummary.by_channel[channel])
+    .filter(Boolean);
+}
+
+function sumSummaryField(field) {
+  const channels = summaryChannels();
+  if (!channels?.length) return null;
+  return channels.reduce((sum, item) => sum + numeric(item[field]), 0);
+}
+
+async function loadQueueSummary() {
+  if (!supabaseClient?.rpc) return;
+  const { data, error } = await supabaseClient.rpc("review_queue_summary_v1");
+  if (error) {
+    console.error(error);
+    queueSummary = null;
+    setStatus(`전체 요약 조회 실패: ${error.message}`, "warn");
+    return;
+  }
+  queueSummary = data || null;
+}
+
 async function loadQueueRows() {
   if (!supabaseClient) return;
   const loadToken = ++queueLoadToken;
@@ -573,6 +603,8 @@ async function loadQueueRows() {
   lastSelectedPageIndex = null;
   resetPagination();
   setStatus("전체 검수 큐 조회 중...", "loading");
+
+  const summaryPromise = loadQueueSummary();
 
   const result = await fetchQueueRows({
     onProgress: (rows, loadedCount) => {
@@ -594,10 +626,14 @@ async function loadQueueRows() {
   }
 
   queueRows = result.rows;
+  await summaryPromise;
   await loadImageAssets(queueRows);
   await loadSellpiaSharedTagsForRows(queueRows);
   renderBatchHelper();
-  setStatus(`${QUEUE_VIEW} 전체 ${queueRows.length.toLocaleString()}건 조회 완료`, "ok");
+  const totalRows = numeric(queueSummary?.totals?.rows);
+  setStatus(totalRows
+    ? `${QUEUE_VIEW}: total ${totalRows.toLocaleString()} rows, loaded ${queueRows.length.toLocaleString()} rows for screen`
+    : `${QUEUE_VIEW}: loaded ${queueRows.length.toLocaleString()} rows for screen`, "ok");
   renderDashboard();
   renderStockSummary();
   renderTable();
@@ -1812,6 +1848,24 @@ function filteredRows() {
 }
 
 function renderDashboard() {
+  if (queueSummary?.totals && queueSummary?.by_channel) {
+    document.getElementById("queueTotal").textContent = numeric(queueSummary.totals.rows).toLocaleString();
+    document.getElementById("detailTotal").textContent = numeric(queueSummary.totals.duplicate_detail_estimate).toLocaleString();
+    document.getElementById("reviewRequiredTotal").textContent = numeric(queueSummary.totals.manual_scope_rows).toLocaleString();
+    document.getElementById("imageLinkedTotal").textContent = numeric(queueSummary.totals.image_linked_rows).toLocaleString();
+
+    const summary = document.getElementById("channelSummary");
+    summary.innerHTML = "";
+    ["smartstore", "makeshop", "ably", "coupang", "playauto"].forEach((channel) => {
+      const count = numeric(queueSummary.by_channel[channel]?.rows);
+      const item = document.createElement("div");
+      item.className = "summary-item";
+      item.innerHTML = `<strong>${channelName(channel)}</strong><span>${count.toLocaleString()} rows</span>`;
+      summary.appendChild(item);
+    });
+    return;
+  }
+
   const channelCounts = new Map();
   let reviewRequired = 0;
   let duplicateDetailEstimate = 0;
@@ -1841,6 +1895,31 @@ function renderDashboard() {
 }
 
 function renderStockSummary() {
+  const summaryValue = (field) => sumSummaryField(field);
+  if (queueSummary?.totals && summaryChannels()?.length) {
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = Number(value || 0).toLocaleString();
+    };
+    setText("workflowCandidateCount", summaryValue("workflow_candidate_rows"));
+    setText("workflowHoldCount", summaryValue("workflow_hold_rows"));
+    setText("workflowCodeBlankCount", summaryValue("workflow_code_blank_rows"));
+    setText("workflowNoMatchCount", summaryValue("workflow_no_match_rows"));
+    setText("workflowExcludedCount", summaryValue("workflow_excluded_rows"));
+    setText("workflowBundleCount", summaryValue("workflow_bundle_rows"));
+    setText("workflowSuboptionCount", summaryValue("workflow_suboption_rows"));
+    setText("stockAllCount", numeric(queueSummary.by_channel?.smartstore?.smartstore_rows));
+    setText("stockMatchCount", numeric(queueSummary.by_channel?.smartstore?.stock_match_rows));
+    setText("stockDiffCount", numeric(queueSummary.by_channel?.smartstore?.stock_diff_rows));
+    setText("stockHoldCount", numeric(queueSummary.by_channel?.smartstore?.stock_hold_rows));
+    setText("stockMissingCount", numeric(queueSummary.by_channel?.smartstore?.stock_missing_rows));
+
+    document.querySelectorAll("[data-workflow-filter]").forEach((card) => {
+      card.classList.toggle("is-active", card.dataset.workflowFilter === activeWorkflowFilter);
+    });
+    return;
+  }
+
   const visibleRows = queueRows.filter((row) => visibleChannels.has(row.source_channel));
   const countGroupedRows = (predicate) => groupedMatrixRows(visibleRows.filter(predicate)).length;
   const workflowCounts = {
@@ -6346,6 +6425,16 @@ function updateTextById(id, value) {
 }
 
 function renderLinkingSummary() {
+  if (queueSummary?.totals && summaryChannels()?.length) {
+    updateTextById("linkingTotalCount", sumSummaryField("manual_scope_rows"));
+    updateTextById("linkingUnmatchedCount", sumSummaryField("needs_linking_rows"));
+    updateTextById("linkingLinkedCount", sumSummaryField("linked_rows"));
+    updateTextById("linkingUnlinkedCount", sumSummaryField("manually_unlinked_rows"));
+    updateTextById("linkingCodeBlankCount", sumSummaryField("workflow_code_blank_rows"));
+    updateTextById("linkingAblyExcludedCount", queueSummary.by_channel?.ably?.workflow_excluded_rows || 0);
+    return;
+  }
+
   const visibleRows = queueRows.filter((row) => row?.queue_id && visibleChannels.has(row.source_channel));
   updateTextById("linkingTotalCount", linkingBaseRows().length);
   updateTextById("linkingUnmatchedCount", visibleRows.filter((row) => rowNeedsLinking(row)).length);
@@ -6640,6 +6729,15 @@ function manualReviewBaseRows() {
 }
 
 function renderManualReviewSummary() {
+  if (queueSummary?.totals && summaryChannels()?.length) {
+    updateTextById("manualAutoCandidateCount", sumSummaryField("auto_candidate_rows"));
+    updateTextById("manualFastReviewCount", sumSummaryField("fast_review_rows"));
+    updateTextById("manualConflictCount", sumSummaryField("conflict_rows"));
+    updateTextById("manualAblyDiscontinueCount", queueSummary.by_channel?.ably?.workflow_excluded_rows || 0);
+    updateTextById("manualPendingCount", sumSummaryField("manual_scope_rows"));
+    return;
+  }
+
   const visibleRows = queueRows.filter((row) => row?.queue_id && visibleChannels.has(row.source_channel));
   updateTextById("manualAutoCandidateCount", visibleRows.filter(isAutoApprovalCandidate).length);
   updateTextById("manualFastReviewCount", visibleRows.filter(isFastReviewCandidate).length);
