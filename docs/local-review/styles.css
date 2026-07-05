@@ -21,6 +21,57 @@ body {
     #f3f6fb;
 }
 
+.auth-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid #c9d7e8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.auth-panel[data-state="ok"] {
+  border-color: #9bc6ad;
+  background: #f2fbf5;
+}
+
+.auth-panel strong {
+  display: block;
+  font-size: 14px;
+}
+
+.auth-panel p {
+  margin: 4px 0 0;
+  color: #526071;
+  font-size: 13px;
+}
+
+.auth-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-form input {
+  min-width: 240px;
+}
+
+@media (max-width: 760px) {
+  .auth-panel,
+  .auth-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .auth-form input {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
 button,
 input,
 select {

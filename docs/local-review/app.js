@@ -103,6 +103,7 @@ const QUEUE_VIEW = config.queueView || "mapping_matrix_review_sample_v3";
 const DETAILS_VIEW = config.detailsView || "match_candidate_details_sample";
 const LOAD_ALL_ROWS = config.loadAllRows !== false;
 const SUPABASE_PAGE_SIZE = Number(config.supabasePageSize || 1000);
+const REQUIRE_AUTH_FOR_WRITES = config.requireAuthForWrites !== false;
 const FULL_BATCH_IDS = [
   "full_channel_matching_20260619_v1_smartstore",
   "full_channel_matching_20260619_v1_makeshop",
@@ -122,6 +123,11 @@ const SAMPLE_BATCH_IDS = [
 const ABLY_FINAL_EXCLUSION_URL = config.ablyFinalExclusionUrl || "data/ably_final_exclusion_20260624.json";
 
 let supabaseClient = null;
+let authSession = null;
+let authUser = null;
+let authReady = false;
+let reviewWriterAllowed = false;
+let reviewWriterStatusMessage = "";
 let queueRows = [];
 let detailCache = new Map();
 let imageMap = new Map();
@@ -321,11 +327,145 @@ function initSupabase() {
   return true;
 }
 
+function authEmail() {
+  return authUser?.email || authSession?.user?.email || "";
+}
+
+function canWriteReview() {
+  if (APP_MODE !== "review") return false;
+  if (!REQUIRE_AUTH_FOR_WRITES) return true;
+  return Boolean(authUser && reviewWriterAllowed);
+}
+
+function writeAccessMessage() {
+  if (APP_MODE !== "review") return "현재 모드는 read-only입니다. 저장은 review 모드에서만 가능합니다.";
+  if (REQUIRE_AUTH_FOR_WRITES && !authUser) return "저장하려면 Supabase 로그인 후 허용된 계정이어야 합니다.";
+  if (REQUIRE_AUTH_FOR_WRITES && authUser && !reviewWriterAllowed) {
+    return reviewWriterStatusMessage || "로그인 계정이 아직 수동검수 allowlist에 없습니다.";
+  }
+  return "";
+}
+
+function renderWriteSensitiveViews() {
+  renderAuthPanel();
+  if (selectedRow) renderDecisionControls(selectedRow);
+  if (document.getElementById("manualReviewView")?.classList.contains("is-active")) {
+    renderManualReviewSelected();
+  }
+  if (document.getElementById("linkingView")?.classList.contains("is-active")) {
+    renderLinkingView();
+  }
+}
+
+function renderAuthPanel() {
+  let panel = document.getElementById("reviewAuthPanel");
+  const main = document.querySelector(".app-main");
+  if (!main) return;
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.id = "reviewAuthPanel";
+    panel.className = "auth-panel";
+    main.insertBefore(panel, main.firstElementChild);
+  }
+
+  const email = authEmail();
+  const writeMessage = writeAccessMessage();
+  panel.dataset.state = canWriteReview() ? "ok" : "warn";
+  panel.innerHTML = `
+    <div>
+      <strong>${canWriteReview() ? "DB 저장 가능" : "DB 저장 잠금"}</strong>
+      <p>${escapeHtml(email ? `${email} 로그인됨` : writeMessage || "로그인 상태 확인 중")}</p>
+      ${email && !canWriteReview() ? `<p>${escapeHtml(writeMessage)}</p>` : ""}
+    </div>
+    <form id="reviewAuthForm" class="auth-form">
+      <input id="reviewAuthEmail" type="email" autocomplete="email" placeholder="operator@example.com" value="${escapeHtml(email)}" ${email ? "disabled" : ""} />
+      ${email
+        ? '<button type="button" id="reviewAuthSignOutButton">로그아웃</button>'
+        : '<button type="submit">로그인 링크 보내기</button>'}
+    </form>
+  `;
+
+  panel.querySelector("#reviewAuthForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = panel.querySelector("#reviewAuthEmail");
+    const targetEmail = input?.value?.trim();
+    if (!targetEmail || !supabaseClient?.auth) return;
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email: targetEmail,
+      options: {
+        emailRedirectTo: window.location.href.split("#")[0],
+      },
+    });
+    if (error) {
+      setStatus(`로그인 링크 발송 실패: ${error.message}`, "warn");
+      return;
+    }
+    setStatus("로그인 링크를 이메일로 보냈습니다.", "ok");
+  });
+
+  panel.querySelector("#reviewAuthSignOutButton")?.addEventListener("click", async () => {
+    if (!supabaseClient?.auth) return;
+    await supabaseClient.auth.signOut();
+  });
+}
+
+async function refreshReviewWriterStatus() {
+  reviewWriterAllowed = false;
+  reviewWriterStatusMessage = "";
+  if (!authUser || !supabaseClient?.rpc) return;
+
+  const { data, error } = await supabaseClient.rpc("current_review_writer_status");
+  if (error) {
+    reviewWriterStatusMessage = `allowlist 확인 실패: ${error.message}`;
+    return;
+  }
+  reviewWriterAllowed = Boolean(data?.allowed);
+  if (!reviewWriterAllowed) {
+    reviewWriterStatusMessage = "로그인은 되었지만 수동검수 allowlist에 등록되지 않았습니다.";
+  }
+}
+
+async function setupAuth() {
+  renderAuthPanel();
+  if (!supabaseClient?.auth) {
+    authReady = true;
+    renderAuthPanel();
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (!error) {
+    authSession = data?.session || null;
+    authUser = authSession?.user || null;
+  }
+  authReady = true;
+  await refreshReviewWriterStatus();
+  renderWriteSensitiveViews();
+
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    authSession = session || null;
+    authUser = authSession?.user || null;
+    authReady = true;
+    await refreshReviewWriterStatus();
+    renderWriteSensitiveViews();
+  });
+}
+
+function ensureWriteAccess() {
+  const message = writeAccessMessage();
+  if (!message) return true;
+  alert(message);
+  return false;
+}
+
 function batchFilter() {
   if (activeBatchIds.length) {
     return activeBatchIds;
   }
   const configured = Array.isArray(config.defaultBatchIds) ? config.defaultBatchIds : [];
+  if (configured.length && !LOAD_ALL_ROWS) {
+    return configured;
+  }
   if (configured.some((id) => String(id).endsWith("_500"))) {
     return configured;
   }
@@ -2325,8 +2465,8 @@ function ensureReviewer() {
 function renderDecisionControls(row) {
   if (!decisionBox) return;
   const hasSellpia = Boolean(row?.best_sellpia_product_code || row?.best_sellpia_sku_code);
-  const canWrite = APP_MODE === "review";
-  const disabledReason = canWrite ? "" : "<p class='decision-warning'>현재 모드는 read-only입니다. 저장은 review 모드에서만 가능합니다.</p>";
+  const canWrite = canWriteReview();
+  const disabledReason = canWrite ? "" : `<p class='decision-warning'>${escapeHtml(writeAccessMessage())}</p>`;
   decisionBox.innerHTML = `
     <h3>옵션 연동 결정</h3>
     <p>원본 파일은 수정하지 않고 Supabase 검수 queue에만 수동 결정과 이력을 저장합니다.</p>
@@ -2350,7 +2490,7 @@ function renderSellpiaSearchBox() {
     <div class="link-search-inline">
       <label>
         Sellpia 옵션 검색
-        <input id="sellpiaLinkSearchInput" type="text" placeholder="Sellpia 코드, 상품명, 옵션명" ${APP_MODE !== "review" ? "disabled" : ""} />
+        <input id="sellpiaLinkSearchInput" type="text" placeholder="Sellpia 코드, 상품명, 옵션명" ${!canWriteReview() ? "disabled" : ""} />
       </label>
       <div id="sellpiaLinkSearchResults" class="link-search-results empty">현재 로드된 데이터 안에서 검색합니다.</div>
     </div>
@@ -2432,10 +2572,7 @@ async function reloadAfterQueueMutation(queueId) {
 
 async function linkSelectedCandidate(payload) {
   if (!selectedRow || !supabaseClient) return;
-  if (APP_MODE !== "review") {
-    alert("현재 모드는 read-only입니다. review 모드에서만 연동 저장이 가능합니다.");
-    return;
-  }
+  if (!ensureWriteAccess()) return;
   const reviewer = ensureReviewer();
   if (!reviewer) return;
   const memo = prompt("연동 메모를 입력하세요. 비워도 됩니다.", "") || null;
@@ -2459,10 +2596,7 @@ async function linkSelectedCandidate(payload) {
 
 async function unlinkSelectedRow() {
   if (!selectedRow || !supabaseClient) return;
-  if (APP_MODE !== "review") {
-    alert("현재 모드는 read-only입니다. review 모드에서만 연동 해제가 가능합니다.");
-    return;
-  }
+  if (!ensureWriteAccess()) return;
   const reviewer = ensureReviewer();
   if (!reviewer) return;
   if (!confirm("현재 Sellpia 옵션 연결을 끊습니다. 원본 파일은 수정하지 않고 검수 queue에만 기록합니다.")) return;
@@ -2486,10 +2620,7 @@ function openCellEdit(button) {
   const field = button.dataset.editField;
   const row = rowByQueueId(queueId);
   if (!row || !EDITABLE_QUEUE_FIELDS.has(field)) return;
-  if (APP_MODE !== "review") {
-    alert("현재 모드는 read-only입니다. review 모드에서만 셀 수정이 가능합니다.");
-    return;
-  }
+  if (!ensureWriteAccess()) return;
   document.querySelectorAll(".cell-edit-panel").forEach((panel) => panel.remove());
   const wrapper = button.closest(".editable-value");
   if (!wrapper) return;
@@ -2512,6 +2643,7 @@ function openCellEdit(button) {
 
 async function saveActiveCellEdit() {
   if (!activeCellEdit || !supabaseClient) return;
+  if (!ensureWriteAccess()) return;
   const reviewer = ensureReviewer();
   if (!reviewer) return;
   const panel = document.querySelector(".cell-edit-panel");
@@ -6605,7 +6737,7 @@ function renderManualReviewSelected() {
 
   selectedRow = row;
   selectedQueueIds = new Set([String(row.queue_id)]);
-  const canWrite = APP_MODE === "review";
+  const canWrite = canWriteReview();
   const hasSellpia = Boolean(currentRowSellpiaPayload(row));
   const policy = policyApprovalTier(row);
   const ablyDiscontinue = isAblyDiscontinueCandidate(row);
@@ -7139,7 +7271,7 @@ document.addEventListener("click", (event) => {
   if (linkButton) {
     event.preventDefault();
     event.stopPropagation();
-    if (linkButton.disabled || APP_MODE !== "review") return;
+    if (linkButton.disabled || !canWriteReview()) return;
     linkSelectedCandidate({
       sellpiaProductCode: linkButton.dataset.sellpiaProductCode,
       sellpiaSkuCode: linkButton.dataset.sellpiaSkuCode,
@@ -7568,8 +7700,8 @@ function renderChannelCells(row) {
 function renderDecisionControls(row) {
   if (!decisionBox) return;
   const hasSellpia = Boolean(row?.best_sellpia_product_code || row?.best_sellpia_sku_code);
-  const canWrite = APP_MODE === "review";
-  const disabledReason = canWrite ? "" : "<p class='decision-warning'>현재 화면은 read-only 모드입니다. 저장은 review 모드에서만 가능합니다.</p>";
+  const canWrite = canWriteReview();
+  const disabledReason = canWrite ? "" : `<p class='decision-warning'>${escapeHtml(writeAccessMessage())}</p>`;
   decisionBox.innerHTML = `
     <h3>옵션 연동 결정</h3>
     <p>원본 파일은 수정하지 않고 Supabase 검수 queue에만 수동 결정과 이력을 저장합니다.</p>
@@ -7698,6 +7830,7 @@ if (pageSizeSelect) {
 renderSellerTemplateSummary();
 
 if (initSupabase()) {
+  setupAuth();
   loadSmartstoreApplyMap();
   loadMakeshopApplyMap();
   loadAblyApplyMap();

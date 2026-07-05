@@ -1,0 +1,18 @@
+window.SYSTEM_V1_CONFIG = {
+  supabaseUrl: "https://bpgvqmtsjgegnrdzmpep.supabase.co",
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3ZxbXRzamdlZ25yZHptcGVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3Mjc0NTIsImV4cCI6MjA5NzMwMzQ1Mn0.tIxMFEUqALi2gywDxKJpxEZ9qcGhYRw8QJeMtRjKFDI",
+  queueView: "mapping_matrix_review_full_v3",
+  detailsView: "match_candidate_details_full",
+  appMode: "review",
+  requireAuthForWrites: true,
+  loadAllRows: false,
+  supabasePageSize: 1000,
+  defaultVisibleChannels: ["smartstore", "makeshop", "ably", "coupang", "playauto"],
+  defaultBatchIds: [
+    "full_channel_matching_20260619_v1_smartstore",
+    "full_channel_matching_20260619_v1_makeshop",
+    "full_channel_matching_20260619_v1_ably",
+    "full_channel_matching_20260619_v1_coupang",
+    "full_channel_matching_20260619_v1_playauto",
+  ],
+};
