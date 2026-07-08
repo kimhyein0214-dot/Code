@@ -333,6 +333,10 @@ function authEmail() {
   return authUser?.email || authSession?.user?.email || "";
 }
 
+function authInputEmail() {
+  return authEmail() || String(config.reviewAuthDefaultEmail || "").trim();
+}
+
 function canWriteReview() {
   if (APP_MODE !== "review") return false;
   if (!REQUIRE_AUTH_FOR_WRITES) return true;
@@ -341,7 +345,7 @@ function canWriteReview() {
 
 function writeAccessMessage() {
   if (APP_MODE !== "review") return "현재 모드는 read-only입니다. 저장은 review 모드에서만 가능합니다.";
-  if (REQUIRE_AUTH_FOR_WRITES && !authUser) return "저장하려면 Supabase 로그인 후 허용된 계정이어야 합니다.";
+  if (REQUIRE_AUTH_FOR_WRITES && !authUser) return "실사용 저장은 이메일 로그인 후 가능합니다. 로그인 링크를 받아 같은 브라우저에서 열어주세요.";
   if (REQUIRE_AUTH_FOR_WRITES && authUser && !reviewWriterAllowed) {
     return reviewWriterStatusMessage || "로그인 계정이 아직 수동검수 allowlist에 없습니다.";
   }
@@ -375,6 +379,7 @@ function renderAuthPanel() {
   }
 
   const email = authEmail();
+  const inputEmail = authInputEmail();
   const writeMessage = writeAccessMessage();
   panel.dataset.state = canWriteReview() ? "ok" : "warn";
   panel.innerHTML = `
@@ -384,7 +389,7 @@ function renderAuthPanel() {
       ${email && !canWriteReview() ? `<p>${escapeHtml(writeMessage)}</p>` : ""}
     </div>
     <form id="reviewAuthForm" class="auth-form">
-      <input id="reviewAuthEmail" type="email" autocomplete="email" placeholder="operator@example.com" value="${escapeHtml(email)}" ${email ? "disabled" : ""} />
+      <input id="reviewAuthEmail" type="email" autocomplete="email" placeholder="hi0559@naver.com" value="${escapeHtml(inputEmail)}" ${email ? "disabled" : ""} />
       ${email
         ? '<button type="button" id="reviewAuthSignOutButton">로그아웃</button>'
         : '<button type="submit">로그인 링크 보내기</button>'}
@@ -406,7 +411,7 @@ function renderAuthPanel() {
       setStatus(`로그인 링크 발송 실패: ${error.message}`, "warn");
       return;
     }
-    setStatus("로그인 링크를 이메일로 보냈습니다.", "ok");
+    setStatus("로그인 링크를 이메일로 보냈습니다. 받은 메일의 링크를 이 브라우저에서 열면 저장 버튼이 활성화됩니다.", "ok");
   });
 
   panel.querySelector("#reviewAuthSignOutButton")?.addEventListener("click", async () => {
