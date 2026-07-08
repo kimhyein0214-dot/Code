@@ -202,6 +202,8 @@ let linkingCandidateTerm = "";
 let manualReviewSearchTerm = "";
 let manualReviewActiveFilter = "all";
 let manualReviewSelectedQueueId = "";
+const MANUAL_REVIEW_PAGE_SIZE = 300;
+let manualReviewVisibleCount = MANUAL_REVIEW_PAGE_SIZE;
 
 function setStatus(text, state = "") {
   statusEl.textContent = text;
@@ -717,7 +719,7 @@ async function fetchQueueRows({ onProgress } = {}) {
       }
     }
 
-    if (!LOAD_ALL_ROWS || !data || data.length < SUPABASE_PAGE_SIZE) {
+    if (!data || data.length < SUPABASE_PAGE_SIZE) {
       break;
     }
     from += SUPABASE_PAGE_SIZE;
@@ -6780,6 +6782,31 @@ function manualReviewBadges(row) {
   return badges.join("");
 }
 
+function manualReviewRowHtml(row) {
+  const selected = String(row.queue_id) === String(manualReviewSelectedQueueId);
+  const policy = policyApprovalTier(row);
+  const image = rowImage(row);
+  return `
+    <button type="button" class="manual-review-row ${selected ? "is-selected" : ""}" data-manual-review-row="${escapeHtml(row.queue_id)}">
+      <span class="manual-review-row-thumb">
+        ${image ? renderImageThumb(image) : "<span class='muted'>No image</span>"}
+      </span>
+      <span class="manual-review-row-top">
+        <strong>${escapeHtml(row.channel_product_code || row.channel_seller_code || row.queue_id)}</strong>
+        <em>${escapeHtml(row.best_sellpia_sku_code || row.best_sellpia_product_code || "Sellpia 미지정")}</em>
+      </span>
+      <span class="manual-review-row-title">${escapeHtml(row.channel_product_name || "-")}</span>
+      <span class="manual-review-row-option">${escapeHtml(row.channel_option_name || "-")}</span>
+      <span class="manual-review-row-policy">${escapeHtml(policy.label || "-")}</span>
+      <span class="manual-review-row-badges">${manualReviewBadges(row)}</span>
+    </button>
+  `;
+}
+
+function resetManualReviewVisibleCount() {
+  manualReviewVisibleCount = MANUAL_REVIEW_PAGE_SIZE;
+}
+
 function renderManualReviewList() {
   const els = manualReviewElements();
   if (!els.list) return;
@@ -6793,30 +6820,27 @@ function renderManualReviewList() {
   if (!rows.some((row) => String(row.queue_id) === String(manualReviewSelectedQueueId))) {
     manualReviewSelectedQueueId = String(rows[0].queue_id);
   }
+  const previousScrollTop = els.list.scrollTop || 0;
+  const visibleCount = Math.min(Math.max(manualReviewVisibleCount, MANUAL_REVIEW_PAGE_SIZE), rows.length);
+  manualReviewVisibleCount = visibleCount;
   els.list.className = "manual-review-list";
-  els.list.innerHTML = rows.slice(0, 300).map((row) => {
-    const selected = String(row.queue_id) === String(manualReviewSelectedQueueId);
-    const policy = policyApprovalTier(row);
-    const image = rowImage(row);
-    return `
-      <button type="button" class="manual-review-row ${selected ? "is-selected" : ""}" data-manual-review-row="${escapeHtml(row.queue_id)}">
-        <span class="manual-review-row-thumb">
-          ${image ? renderImageThumb(image) : "<span class='muted'>No image</span>"}
-        </span>
-        <span class="manual-review-row-top">
-          <strong>${escapeHtml(row.channel_product_code || row.channel_seller_code || row.queue_id)}</strong>
-          <em>${escapeHtml(row.best_sellpia_sku_code || row.best_sellpia_product_code || "Sellpia 미지정")}</em>
-        </span>
-        <span class="manual-review-row-title">${escapeHtml(row.channel_product_name || "-")}</span>
-        <span class="manual-review-row-option">${escapeHtml(row.channel_option_name || "-")}</span>
-        <span class="manual-review-row-policy">${escapeHtml(policy.label || "-")}</span>
-        <span class="manual-review-row-badges">${manualReviewBadges(row)}</span>
-      </button>
-    `;
-  }).join("");
-  if (rows.length > 300) {
-    els.list.insertAdjacentHTML("beforeend", `<p class="linking-list-limit">상위 300개만 표시 중입니다. 검색어를 더 좁혀주세요.</p>`);
+  els.list.innerHTML = rows.slice(0, visibleCount).map(manualReviewRowHtml).join("");
+  if (rows.length > visibleCount) {
+    els.list.insertAdjacentHTML(
+      "beforeend",
+      `<button type="button" class="manual-review-load-more" data-manual-review-load-more="true">${visibleCount.toLocaleString()} / ${rows.length.toLocaleString()}개 표시 중 - 더 보기</button>`
+    );
+  } else {
+    els.list.insertAdjacentHTML("beforeend", `<p class="linking-list-limit">전체 ${rows.length.toLocaleString()}개를 표시 중입니다.</p>`);
   }
+  els.list.scrollTop = previousScrollTop;
+}
+
+function loadMoreManualReviewRows() {
+  const rows = manualReviewBaseRows();
+  if (manualReviewVisibleCount >= rows.length) return;
+  manualReviewVisibleCount = Math.min(manualReviewVisibleCount + MANUAL_REVIEW_PAGE_SIZE, rows.length);
+  renderManualReviewList();
 }
 
 function selectedManualReviewRow() {
@@ -7061,6 +7085,7 @@ document.getElementById("linkingRefreshButton")?.addEventListener("click", async
 
 document.getElementById("manualReviewSearchInput")?.addEventListener("input", (event) => {
   manualReviewSearchTerm = event.target.value || "";
+  resetManualReviewVisibleCount();
   renderManualReviewView();
 });
 
@@ -7068,19 +7093,32 @@ document.getElementById("manualReviewFilterControls")?.addEventListener("click",
   const button = event.target.closest("[data-manual-filter]");
   if (!button) return;
   manualReviewActiveFilter = button.dataset.manualFilter || "all";
+  resetManualReviewVisibleCount();
   document.querySelectorAll("[data-manual-filter]").forEach((item) => item.classList.toggle("is-active", item === button));
   renderManualReviewView();
 });
 
 document.getElementById("manualReviewList")?.addEventListener("click", (event) => {
+  if (event.target.closest("[data-manual-review-load-more]")) {
+    loadMoreManualReviewRows();
+    return;
+  }
   const button = event.target.closest("[data-manual-review-row]");
   if (!button) return;
   manualReviewSelectedQueueId = String(button.dataset.manualReviewRow || "");
   renderManualReviewView();
 });
 
+document.getElementById("manualReviewList")?.addEventListener("scroll", (event) => {
+  const list = event.currentTarget;
+  if (!list || list.classList.contains("empty")) return;
+  if (list.scrollTop + list.clientHeight < list.scrollHeight - 120) return;
+  loadMoreManualReviewRows();
+});
+
 document.getElementById("manualReviewRefreshButton")?.addEventListener("click", async () => {
   await loadQueueRows();
+  resetManualReviewVisibleCount();
   renderManualReviewView();
 });
 

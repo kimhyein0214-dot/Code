@@ -3224,6 +3224,22 @@ select,
   text-align: left;
 }
 
+.manual-review-load-more {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.manual-review-load-more:hover {
+  background: #dbeafe;
+}
+
 .manual-review-row-thumb {
   display: grid;
   grid-row: 1 / span 5;
