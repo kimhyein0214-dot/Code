@@ -1589,14 +1589,20 @@ function isFieldEdited(row, field) {
 
 function latestLinkDecision(row) {
   const decisions = evidenceArray(row, "local_html_link_decision");
+  const discontinued = evidenceArray(row, "local_html_discontinue_decision");
+  if (discontinued.length) return { ...discontinued[discontinued.length - 1], decision: "discontinue" };
   return decisions.length ? decisions[decisions.length - 1] : null;
 }
 
 function linkDecisionBadge(row) {
   const latest = latestLinkDecision(row);
   if (!latest?.decision) return "";
-  const label = latest.decision === "unlink" ? "연동 해제됨" : "수동 연동됨";
-  const tone = latest.decision === "unlink" ? "is-unlinked" : "is-linked";
+  const label = latest.decision === "discontinue"
+    ? "단종/제외 처리됨"
+    : latest.decision === "unlink"
+      ? "연동 해제됨"
+      : "수동 연동됨";
+  const tone = latest.decision === "discontinue" || latest.decision === "unlink" ? "is-unlinked" : "is-linked";
   return `<em class="manual-decision-badge ${tone}">${escapeHtml(label)}</em>`;
 }
 
@@ -2726,6 +2732,26 @@ async function unlinkSelectedRow() {
   await reloadAfterQueueMutation(selectedRow.queue_id);
 }
 
+async function discontinueSelectedRow() {
+  if (!selectedRow || !supabaseClient) return;
+  if (!ensureWriteAccess()) return;
+  const reviewer = ensureReviewer();
+  if (!reviewer) return;
+  const memo = prompt("단종/제외 처리 메모를 입력하세요. 비워도 됩니다.", "") || null;
+  const { error } = await supabaseClient.rpc("mark_match_candidate_discontinued", {
+    queue_id: Number(selectedRow.queue_id),
+    reviewer,
+    memo,
+  });
+  if (error) {
+    console.error(error);
+    alert(`단종/제외 저장 실패: ${error.message}`);
+    return;
+  }
+  setStatus("단종/제외 처리를 저장했습니다.", "ok");
+  await reloadAfterQueueMutation(selectedRow.queue_id);
+}
+
 function openCellEdit(button) {
   const queueId = button.dataset.queueId;
   const field = button.dataset.editField;
@@ -3556,6 +3582,11 @@ async function saveSellpiaTagUpload() {
 
 function renderImageThumb(image) {
   return `<img class="table-thumb" src="${escapeHtml(image.storage_public_url)}" alt="${escapeHtml(image.original_file_name || "")}" />`;
+}
+
+function imageMissingLabel(row) {
+  if (!row?.best_sellpia_product_code && !row?.best_sellpia_sku_code) return "Sellpia 코드 없음";
+  return "이미지 없음";
 }
 
 function rowImage(row) {
@@ -6795,7 +6826,7 @@ function manualReviewRowHtml(row) {
   return `
     <button type="button" class="manual-review-row ${selected ? "is-selected" : ""}" data-manual-review-row="${escapeHtml(row.queue_id)}">
       <span class="manual-review-row-thumb">
-        ${image ? renderImageThumb(image) : "<span class='muted'>No image</span>"}
+        ${image ? renderImageThumb(image) : `<span class='muted'>${escapeHtml(imageMissingLabel(row))}</span>`}
       </span>
       <span class="manual-review-row-top">
         <strong>${escapeHtml(row.channel_product_code || row.channel_seller_code || row.queue_id)}</strong>
@@ -7186,13 +7217,13 @@ document.getElementById("manualDiscontinueButton")?.addEventListener("click", as
     alert("에이블리 제외 근거가 있는 행만 단종 후보로 처리할 수 있습니다.");
     return;
   }
-  const ok = confirm("에이블리 제외 근거가 있는 행입니다. 현재 버전에서는 단종 처리를 연동 끊기 이력으로 저장합니다. 계속할까요?");
+  const ok = confirm("에이블리 제외 근거가 있는 행입니다. 기존 단종/제외 데이터와 같은 방식으로 검수 큐에 제외 처리합니다. 계속할까요?");
   if (!ok) return;
   selectedRow = row;
-  await unlinkSelectedRow();
+  await discontinueSelectedRow();
   manualReviewSelectedQueueId = String(row.queue_id);
   const els = manualReviewElements();
-  if (els.writeStatus) els.writeStatus.textContent = "단종 후보 처리 요청을 저장했습니다.";
+  if (els.writeStatus) els.writeStatus.textContent = "단종/제외 처리 요청을 저장했습니다.";
   renderManualReviewView();
 });
 

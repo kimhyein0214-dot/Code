@@ -52,6 +52,7 @@ $function$;
 GRANT EXECUTE ON FUNCTION public.current_review_writer_status() TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.link_match_candidate_option(bigint, text, text, text, text, text, text) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.unlink_match_candidate_option(bigint, text, text) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.mark_match_candidate_discontinued(bigint, text, text) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.update_match_candidate_queue_cell(bigint, text, text, text, text) TO anon, authenticated, service_role;
 
 COMMIT;
