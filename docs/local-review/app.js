@@ -6780,11 +6780,12 @@ function manualReviewBaseRows() {
     if (!row?.queue_id) return false;
     if (!visibleChannels.has(row.source_channel)) return false;
     if (keyword && !manualReviewSearchText(row).includes(keyword)) return false;
+    if (manualReviewActiveFilter === "ably_discontinue") return isAblyDiscontinueCandidate(row);
+    if (isAblyDiscontinueCandidate(row)) return false;
     if (manualReviewActiveFilter === "auto") return isAutoApprovalCandidate(row);
     if (manualReviewActiveFilter === "conflict") return isConflictReviewRow(row);
     if (manualReviewActiveFilter === "unmatched") return rowNeedsLinking(row);
     if (manualReviewActiveFilter === "hold") return workflowBucket(row) === "hold" || row.review_required || stockStatusForRow(row) === "STOCK_HOLD_REVIEW";
-    if (manualReviewActiveFilter === "ably_discontinue") return isAblyDiscontinueCandidate(row);
     return isManualReviewPending(row) || isAutoApprovalCandidate(row);
   });
 }
