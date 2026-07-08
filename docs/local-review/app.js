@@ -2558,7 +2558,7 @@ function currentReviewer() {
 function ensureReviewer() {
   const reviewer = currentReviewer();
   if (!reviewer) {
-    alert("검수자를 입력해야 저장할 수 있습니다.");
+    alert("저장자 정보를 확인할 수 없습니다.");
     tagReviewerInput?.focus();
     return "";
   }
@@ -2976,9 +2976,9 @@ function renderTagBadges(tags, className = "") {
 
 async function addTagToSelectedRow() {
   if ((!selectedRow && !selectedQueueIds.size) || pendingTagIds.size === 0) return;
-  const reviewer = tagReviewerInput.value.trim();
+  const reviewer = currentReviewer();
   if (!reviewer) {
-    alert("검수자를 입력하세요.");
+    alert("저장자 정보를 확인할 수 없습니다.");
     return;
   }
 
@@ -3073,7 +3073,7 @@ async function createManualTag() {
   const { error } = await supabaseClient.from("product_tags").insert({
     tag_name: tagName,
     tag_color: color,
-    created_by: tagReviewerInput.value.trim() || "local_html",
+    created_by: currentReviewer() || "local_html",
   });
   if (error) {
     if (error.code === "23505") {
@@ -3212,7 +3212,7 @@ async function downloadSellpiaTagUploadTemplate() {
       tags: "에이블리제외, 14K확인",
       tag_color: "#E9D5FF",
       tag_memo: "예시: MD 체크 기준",
-      reviewer: tagReviewerInput?.value?.trim() || "혜인",
+      reviewer: currentReviewer(),
       action: "add",
       note: "예시 행은 삭제 후 사용",
     },
@@ -3222,7 +3222,7 @@ async function downloadSellpiaTagUploadTemplate() {
       tag_name: "상품명확인",
       tag_color: "#DBEAFE",
       tag_memo: "상품 전체에 공유되는 태그 예시",
-      reviewer: tagReviewerInput?.value?.trim() || "혜인",
+      reviewer: currentReviewer(),
       action: "add",
       note: "상품 태그는 sellpia_sku_code를 비워도 됨",
     },
@@ -3335,7 +3335,7 @@ async function parseSellpiaTagUploadWorkbook(file) {
     ];
     const tagMemo = tagUploadValue(row, headerMap, ["tag_memo", "memo", "태그메모", "메모"]);
     const tagColor = tagUploadValue(row, headerMap, ["tag_color", "태그색상", "색상"]) || "#E9D5FF";
-    const reviewer = tagUploadValue(row, headerMap, ["reviewer", "검수자", "작성자"]) || tagReviewerInput?.value?.trim() || "혜인";
+    const reviewer = tagUploadValue(row, headerMap, ["reviewer", "검수자", "작성자"]) || currentReviewer();
     const action = (tagUploadValue(row, headerMap, ["action", "작업"]) || "add").toLowerCase();
     const sourceChannel = tagUploadValue(row, headerMap, ["source_channel", "판매처"]);
     const channelProductCode = tagUploadValue(row, headerMap, ["channel_product_code", "판매처 상품코드"]);
@@ -3523,7 +3523,7 @@ async function saveSellpiaTagUpload() {
         tag_scope: row.tag_scope,
         sellpia_product_code: productCode || null,
         sellpia_sku_code: skuCode || null,
-        reviewer: row.reviewer || tagReviewerInput?.value?.trim() || "혜인",
+        reviewer: row.reviewer || currentReviewer(),
         memo: row.memo || null,
         source_file_name: fileName,
         source_row_no: row.source_row_no || null,
@@ -6663,7 +6663,6 @@ function manualReviewElements() {
     sellpiaCard: document.getElementById("manualReviewSellpiaCard"),
     evidenceList: document.getElementById("manualReviewEvidenceList"),
     recommendation: document.getElementById("manualReviewRecommendation"),
-    reviewerName: document.getElementById("manualReviewerName"),
     autoApproveButton: document.getElementById("manualAutoApproveButton"),
     linkButton: document.getElementById("manualLinkButton"),
     unlinkButton: document.getElementById("manualUnlinkButton"),
@@ -6849,9 +6848,6 @@ function manualCardFields(fields) {
 function renderManualReviewSelected() {
   const els = manualReviewElements();
   const row = selectedManualReviewRow();
-  const reviewer = currentReviewer();
-  if (els.reviewerName) els.reviewerName.textContent = reviewer || "미입력";
-
   if (!row) {
     ["sellerCard", "sellpiaCard", "evidenceList", "recommendation", "impactBox"].forEach((key) => {
       if (!els[key]) return;
@@ -6905,7 +6901,14 @@ function renderManualReviewSelected() {
         ["매칭 점수", row.match_score],
       ])}
       ${linkDecisionBadge(row)}
-    ` : "현재 행에는 Sellpia 후보 코드가 없습니다. 상품 매칭관리에서 후보를 검색해 연결하세요.";
+    ` : `
+      <div class="manual-card-title">
+        <strong>Sellpia 후보 없음</strong>
+        <span class="linking-status-badge">수동 검색 필요</span>
+      </div>
+      <p>현재 행에는 Sellpia 후보 코드가 없습니다. 아래에서 후보를 검색해 바로 연동하세요.</p>
+      ${renderSellpiaSearchBox()}
+    `;
   }
 
   if (els.evidenceList) {
@@ -6935,22 +6938,27 @@ function renderManualReviewSelected() {
         ? "자동승인 후보입니다. 판매처 상품/옵션과 Sellpia 후보가 맞으면 확정할 수 있습니다."
         : isConflictReviewRow(row)
           ? "중복 또는 충돌 가능성이 있습니다. 연결된 타 판매처 정보를 비교한 뒤 수동 결정하세요."
-          : "검수자가 상품명, 옵션명, 자사코드를 확인한 뒤 처리하세요.";
+          : "담당자가 상품명, 옵션명, 자사코드를 확인한 뒤 처리하세요.";
     els.recommendation.className = "manual-recommendation";
     els.recommendation.innerHTML = `<strong>추천 판단</strong><p>${escapeHtml(recommendation)}</p>`;
   }
 
   if (els.impactBox) {
+    const decisionHint = !canWrite
+      ? "현재 읽기 전용 모드라 저장 버튼이 잠겨 있습니다."
+      : !hasSellpia
+        ? "Sellpia 후보가 없는 행입니다. 수동 연동은 후보 검색 후 결과를 선택하면 저장됩니다."
+        : "현재 저장 가능한 review 모드입니다.";
     els.impactBox.className = "manual-impact-box";
     els.impactBox.innerHTML = `
       <strong>처리 영향</strong>
       <p>연동/해제 저장은 Supabase 검수 큐 이력에 기록됩니다. 원본 엑셀 파일은 직접 수정하지 않습니다.</p>
-      <p>${canWrite ? "현재 저장 가능한 review 모드입니다." : "현재 읽기 전용 모드라 저장 버튼이 잠겨 있습니다."}</p>
+      <p>${escapeHtml(decisionHint)}</p>
     `;
   }
 
   if (els.autoApproveButton) els.autoApproveButton.disabled = !canWrite || !hasSellpia || !isAutoApprovalCandidate(row);
-  if (els.linkButton) els.linkButton.disabled = !canWrite || !hasSellpia;
+  if (els.linkButton) els.linkButton.disabled = !canWrite;
   if (els.unlinkButton) els.unlinkButton.disabled = !canWrite || !rowHasSellpiaLink(row) || rowIsManuallyUnlinked(row);
   if (els.discontinueButton) els.discontinueButton.disabled = !canWrite || !ablyDiscontinue;
 }
@@ -7099,7 +7107,9 @@ document.getElementById("manualLinkButton")?.addEventListener("click", async () 
   const row = selectedManualReviewRow();
   const payload = currentRowSellpiaPayload(row);
   if (!row || !payload) {
-    alert("수동 연동할 Sellpia 후보가 없습니다.");
+    const searchInput = document.getElementById("sellpiaLinkSearchInput");
+    searchInput?.focus();
+    alert("수동 연동할 Sellpia 후보를 먼저 검색해서 선택하세요.");
     return;
   }
   selectedRow = row;

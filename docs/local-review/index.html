@@ -685,10 +685,7 @@
                   <button class="chip is-active" type="button" data-tag-filter="">전체 태그</button>
                 </div>
               </div>
-              <label>
-                검수자
-                <input id="tagReviewerInput" type="text" value="혜인" />
-              </label>
+              <input id="tagReviewerInput" type="hidden" value="" />
               <label>
                 새 태그명
                 <input id="newTagNameInput" type="text" placeholder="예: 대표님확인" />
@@ -1032,9 +1029,9 @@
               </div>
             </div>
             <div class="manual-reviewer-box">
-              <span>검수자</span>
-              <strong id="manualReviewerName">미입력</strong>
-              <p>저장은 검수자 입력 후 review 모드에서만 가능합니다.</p>
+              <span>저장 상태</span>
+              <strong>DB 저장 가능</strong>
+              <p>로그인 없이 공개 검수 화면에서 바로 저장합니다.</p>
             </div>
             <div class="manual-action-grid">
               <button id="manualAutoApproveButton" class="manual-action primary" type="button">자동승인 후보 확정</button>
@@ -1051,7 +1048,7 @@
 
     <script src="./vendor/supabase.js"></script>
     <script src="./vendor/exceljs.bare.min.js?v=20260619"></script>
-    <script src="./pages-config.js?v=20260708-live-link-v1"></script>
-    <script src="./app.js?v=20260708-live-link-v1"></script>
+    <script src="./pages-config.js?v=20260708-public-write-v2"></script>
+    <script src="./app.js?v=20260708-public-write-v2"></script>
   </body>
 </html>
