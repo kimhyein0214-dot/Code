@@ -204,6 +204,8 @@ let manualReviewActiveFilter = "all";
 let manualReviewSelectedQueueId = "";
 const MANUAL_REVIEW_PAGE_SIZE = 300;
 let manualReviewVisibleCount = MANUAL_REVIEW_PAGE_SIZE;
+let queueRowsLoading = false;
+let queueRowsFullyLoaded = false;
 
 function setStatus(text, state = "") {
   statusEl.textContent = text;
@@ -614,6 +616,8 @@ async function loadQueueSummary() {
 async function loadQueueRows() {
   if (!supabaseClient) return;
   const loadToken = ++queueLoadToken;
+  queueRowsLoading = true;
+  queueRowsFullyLoaded = false;
   activeBatchIds = selectedBatchIds();
   detailCache = new Map();
   selectedRow = null;
@@ -639,11 +643,14 @@ async function loadQueueRows() {
   if (loadToken !== queueLoadToken) return;
   if (result.error) {
     console.error(result.error);
+    queueRowsLoading = false;
     setStatus(`검수 큐 조회 실패: ${result.error.message}`, "error");
     return;
   }
 
   queueRows = result.rows;
+  queueRowsLoading = false;
+  queueRowsFullyLoaded = true;
   await summaryPromise;
   await loadImageAssets(queueRows);
   await loadSellpiaSharedTagsForRows(queueRows);
@@ -701,6 +708,7 @@ async function fetchQueueRows({ onProgress } = {}) {
     let query = supabaseClient
       .from(QUEUE_VIEW)
       .select(queueSelectColumns())
+      .order("review_required", { ascending: false })
       .order("source_channel", { ascending: true })
       .order("queue_id", { ascending: true })
       .range(from, to);
@@ -713,10 +721,8 @@ async function fetchQueueRows({ onProgress } = {}) {
     if (error) return { rows, error };
     rows.push(...(data || []));
     if (typeof onProgress === "function" && rows.length) {
-      if (rows.length <= SUPABASE_PAGE_SIZE || rows.length % (SUPABASE_PAGE_SIZE * 10) === 0) {
-        onProgress(rows, rows.length);
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
+      onProgress(rows, rows.length);
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
     if (!data || data.length < SUPABASE_PAGE_SIZE) {
@@ -6814,7 +6820,9 @@ function renderManualReviewList() {
   if (!rows.length) {
     manualReviewSelectedQueueId = "";
     els.list.className = "manual-review-list empty";
-    els.list.textContent = "현재 조건에 맞는 검수 대상이 없습니다.";
+    els.list.textContent = queueRowsLoading && !queueRowsFullyLoaded
+      ? "현재 조건의 검수 데이터를 불러오는 중입니다. 잠시만 기다려주세요."
+      : "현재 조건에 맞는 검수 대상이 없습니다.";
     return;
   }
   if (!rows.some((row) => String(row.queue_id) === String(manualReviewSelectedQueueId))) {
