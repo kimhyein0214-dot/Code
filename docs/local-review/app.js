@@ -345,6 +345,7 @@ function canWriteReview() {
 
 function writeAccessMessage() {
   if (APP_MODE !== "review") return "현재 모드는 read-only입니다. 저장은 review 모드에서만 가능합니다.";
+  if (!REQUIRE_AUTH_FOR_WRITES) return "";
   if (REQUIRE_AUTH_FOR_WRITES && !authUser) return "실사용 저장은 이메일 로그인 후 가능합니다. 로그인 링크를 받아 같은 브라우저에서 열어주세요.";
   if (REQUIRE_AUTH_FOR_WRITES && authUser && !reviewWriterAllowed) {
     return reviewWriterStatusMessage || "로그인 계정이 아직 수동검수 allowlist에 없습니다.";
@@ -382,6 +383,15 @@ function renderAuthPanel() {
   const inputEmail = authInputEmail();
   const writeMessage = writeAccessMessage();
   panel.dataset.state = canWriteReview() ? "ok" : "warn";
+  if (!REQUIRE_AUTH_FOR_WRITES) {
+    panel.innerHTML = `
+      <div>
+        <strong>DB 저장 가능</strong>
+        <p>FULL_System 방식처럼 로그인 없이 공개 검수 화면에서 바로 저장합니다.</p>
+      </div>
+    `;
+    return;
+  }
   panel.innerHTML = `
     <div>
       <strong>${canWriteReview() ? "DB 저장 가능" : "DB 저장 잠금"}</strong>
@@ -2542,7 +2552,7 @@ async function selectRow(row, tr, options = {}) {
 }
 
 function currentReviewer() {
-  return tagReviewerInput?.value?.trim() || "";
+  return tagReviewerInput?.value?.trim() || String(config.defaultReviewerName || "public-review").trim();
 }
 
 function ensureReviewer() {
