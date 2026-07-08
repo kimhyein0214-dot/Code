@@ -6767,7 +6767,7 @@ function isAblyDiscontinueCandidate(row) {
 function isManualReviewPending(row) {
   if (!row?.queue_id) return false;
   if (rowIsManuallyUnlinked(row)) return false;
-  if (isAblyDiscontinueCandidate(row)) return true;
+  if (isAblyDiscontinueCandidate(row)) return false;
   if (isConflictReviewRow(row)) return true;
   if (rowNeedsLinking(row)) return true;
   if (row.review_required) return true;
