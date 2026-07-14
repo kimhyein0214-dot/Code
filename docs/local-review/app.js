@@ -700,24 +700,50 @@ function queueSelectColumns() {
   ].join(",");
 }
 
+function queueRestHeaders() {
+  const token = authSession?.access_token || config.supabaseAnonKey;
+  return {
+    apikey: config.supabaseAnonKey,
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+  };
+}
+
+async function fetchQueuePageViaRest(from, to) {
+  const url = new URL(`${config.supabaseUrl}/rest/v1/${QUEUE_VIEW}`);
+  url.searchParams.set("select", queueSelectColumns());
+  url.searchParams.set("order", "review_required.desc,source_channel.asc,queue_id.asc");
+  url.searchParams.set("limit", String(to - from + 1));
+  url.searchParams.set("offset", String(from));
+  if (!LOAD_ALL_ROWS) {
+    url.searchParams.set("source_batch_id", `in.(${activeBatchIds.join(",")})`);
+  }
+
+  const response = await fetch(url.toString(), { headers: queueRestHeaders() });
+  if (response.ok) return { data: await response.json(), error: null };
+
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = { message: await response.text() };
+  }
+  return {
+    data: null,
+    error: {
+      ...body,
+      status: response.status,
+      message: body?.message || `${response.status} ${response.statusText}`,
+    },
+  };
+}
+
 async function fetchQueueRows({ onProgress } = {}) {
   const rows = [];
   let from = 0;
   while (true) {
     const to = from + SUPABASE_PAGE_SIZE - 1;
-    let query = supabaseClient
-      .from(QUEUE_VIEW)
-      .select(queueSelectColumns())
-      .order("review_required", { ascending: false })
-      .order("source_channel", { ascending: true })
-      .order("queue_id", { ascending: true })
-      .range(from, to);
-
-    if (!LOAD_ALL_ROWS) {
-      query = query.in("source_batch_id", activeBatchIds);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await fetchQueuePageViaRest(from, to);
     if (error) return { rows, error };
     rows.push(...(data || []));
     if (typeof onProgress === "function" && rows.length) {
