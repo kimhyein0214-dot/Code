@@ -2176,8 +2176,7 @@ function renderTableHeader() {
   const sellerColumns = visibleChannelList()
     .map((channel) => `
       <th class="channel-group channel-start is-${channel}" data-channel="${channel}">${escapeHtml(channelName(channel))} 상품</th>
-      <th class="channel-group is-${channel}" data-channel="${channel}">${escapeHtml(channelName(channel))} 옵션</th>
-      <th class="channel-group channel-end is-${channel}" data-channel="${channel}">판정/액션</th>
+      <th class="channel-group channel-end is-${channel}" data-channel="${channel}">${escapeHtml(channelName(channel))} 옵션</th>
     `)
     .join("");
 
@@ -2200,7 +2199,6 @@ function renderChannelCells(row) {
       if (!channelRow) {
         return `
           <td class="channel-cell channel-start is-empty is-${channel}" data-channel="${channel}">-</td>
-          <td class="channel-cell is-empty is-${channel}" data-channel="${channel}">-</td>
           <td class="channel-cell channel-end is-empty is-${channel}" data-channel="${channel}">-</td>
         `;
       }
@@ -2209,13 +2207,9 @@ function renderChannelCells(row) {
           <strong class="${codeCellClass(channelRow, "channel_product_code", channelRow.channel_product_code)}">${escapeHtml(channelRow.channel_product_code || "-")}</strong>
           <span>${escapeHtml(channelRow.channel_product_name || "")}</span>
         </td>
-        <td class="channel-cell is-${channel} ${channelProblemClass(channelRow, "channel_option_code", channelRow.channel_option_code)}" data-channel="${channel}" data-queue-id="${escapeHtml(channelRow.queue_id)}">
+        <td class="channel-cell channel-end is-${channel} ${channelProblemClass(channelRow, "channel_option_code", channelRow.channel_option_code)}" data-channel="${channel}" data-queue-id="${escapeHtml(channelRow.queue_id)}">
           <strong class="${codeCellClass(channelRow, "channel_option_code", channelRow.channel_option_code)}">${escapeHtml(channelRow.channel_option_code || "-")}</strong>
           <span>${escapeHtml(channelRow.channel_option_name || "")}</span>
-        </td>
-        <td class="channel-cell channel-end is-${channel} ${statusCellClass(channelRow)}" data-channel="${channel}" data-queue-id="${escapeHtml(channelRow.queue_id)}">
-          <strong>${escapeHtml(channelRow.recommended_action || stockStatusLabel(stockStatusForRow(channelRow)))}</strong>
-          <span>${escapeHtml(channelRow.match_reason || "")}</span>
         </td>
       `;
     })
@@ -2286,7 +2280,7 @@ function renderTable() {
   queueTableBody.innerHTML = "";
 
   if (!page.rows.length) {
-    const colSpan = 6 + visibleChannelList().length * 3;
+    const colSpan = 6 + visibleChannelList().length * 2;
     queueTableBody.innerHTML = `<tr><td colspan="${colSpan}">현재 필터에 맞는 행이 없습니다.</td></tr>`;
     return;
   }
@@ -2378,8 +2372,7 @@ function renderTableHeader() {
   const sellerColumns = visibleChannelList()
     .map((channel) => `
       <th class="channel-group channel-start is-${channel}" data-channel="${channel}">${escapeHtml(channelName(channel))} 상품</th>
-      <th class="channel-group is-${channel}" data-channel="${channel}">${escapeHtml(channelName(channel))} 옵션</th>
-      <th class="channel-group channel-end is-${channel}" data-channel="${channel}">판정/액션</th>
+      <th class="channel-group channel-end is-${channel}" data-channel="${channel}">${escapeHtml(channelName(channel))} 옵션</th>
     `)
     .join("");
 
@@ -2402,7 +2395,6 @@ function renderChannelCells(row) {
       if (!channelRow) {
         return `
           <td class="channel-cell channel-start is-empty is-${channel}" data-channel="${channel}">-</td>
-          <td class="channel-cell is-empty is-${channel}" data-channel="${channel}">-</td>
           <td class="channel-cell channel-end is-empty is-${channel}" data-channel="${channel}">-</td>
         `;
       }
@@ -2412,15 +2404,10 @@ function renderChannelCells(row) {
           ${ownCodeForRow(channelRow) ? `<em class="own-code-badge">자사 ${escapeHtml(ownCodeForRow(channelRow))}</em>` : ""}
           ${renderEditableValue(channelRow, "channel_product_name", channelRow.channel_product_name || "", "span")}
         </td>
-        <td class="channel-cell is-${channel} ${channelProblemClass(channelRow, "channel_option_code", channelRow.channel_option_code)}" data-channel="${channel}" data-queue-id="${escapeHtml(channelRow.queue_id)}">
+        <td class="channel-cell channel-end is-${channel} ${channelProblemClass(channelRow, "channel_option_code", channelRow.channel_option_code)}" data-channel="${channel}" data-queue-id="${escapeHtml(channelRow.queue_id)}">
           ${renderEditableValue(channelRow, "channel_option_code", channelRow.channel_option_code || "-", "strong", codeCellClass(channelRow, "channel_option_code", channelRow.channel_option_code))}
           ${ownCodeForRow(channelRow) ? `<em class="own-code-badge">자사 ${escapeHtml(ownCodeForRow(channelRow))}</em>` : ""}
           ${renderEditableValue(channelRow, "channel_option_name", channelRow.channel_option_name || "", "span")}
-        </td>
-        <td class="channel-cell channel-end is-${channel} ${statusCellClass(channelRow)}" data-channel="${channel}" data-queue-id="${escapeHtml(channelRow.queue_id)}">
-          ${renderEditableValue(channelRow, "recommended_action", channelRow.recommended_action || stockStatusLabel(stockStatusForRow(channelRow)), "strong")}
-          ${renderEditableValue(channelRow, "match_reason", channelRow.match_reason || "", "span")}
-          ${linkDecisionBadge(channelRow)}
         </td>
       `;
     })
@@ -2442,7 +2429,7 @@ function renderTable() {
   queueTableBody.innerHTML = "";
 
   if (!page.rows.length) {
-    const colSpan = 6 + visibleChannelList().length * 3;
+    const colSpan = 6 + visibleChannelList().length * 2;
     queueTableBody.innerHTML = `<tr><td colspan="${colSpan}">현재 필터에 맞는 행이 없습니다.</td></tr>`;
     return;
   }
@@ -7888,8 +7875,7 @@ function renderTableHeader() {
   const sellerColumns = visibleChannelList()
     .map((channel) => `
       <th class="channel-group channel-start is-${channel}" data-channel="${channel}">${escapeHtml(channelName(channel))} 상품</th>
-      <th class="channel-group is-${channel}" data-channel="${channel}">${escapeHtml(channelName(channel))} 옵션</th>
-      <th class="channel-group channel-end is-${channel}" data-channel="${channel}">판정/액션</th>
+      <th class="channel-group channel-end is-${channel}" data-channel="${channel}">${escapeHtml(channelName(channel))} 옵션</th>
     `)
     .join("");
 
@@ -7912,7 +7898,6 @@ function renderChannelCells(row) {
       if (!channelRow) {
         return `
           <td class="channel-cell channel-start is-empty is-${channel}" data-channel="${channel}">-</td>
-          <td class="channel-cell is-empty is-${channel}" data-channel="${channel}">-</td>
           <td class="channel-cell channel-end is-empty is-${channel}" data-channel="${channel}">-</td>
         `;
       }
@@ -7925,15 +7910,10 @@ function renderChannelCells(row) {
           ${renderAblyExclusionBadge(channelRow, channel)}
           ${renderEditableValue(channelRow, "channel_product_name", channelRow.channel_product_name || "", "span")}
         </td>
-        <td class="channel-cell is-${channel} ${ablyExcludedClass}" data-channel="${channel}" data-queue-id="${escapeHtml(channelRow.queue_id)}">
+        <td class="channel-cell channel-end is-${channel} ${ablyExcludedClass}" data-channel="${channel}" data-queue-id="${escapeHtml(channelRow.queue_id)}">
           ${renderEditableValue(channelRow, "channel_option_code", channelRow.channel_option_code || "-", "strong", codeCellClass(channelRow, "channel_option_code", channelRow.channel_option_code))}
           ${ownCode ? `<em class="own-code-badge">자사 ${escapeHtml(ownCode)}</em>` : ""}
           ${renderEditableValue(channelRow, "channel_option_name", channelRow.channel_option_name || "", "span")}
-        </td>
-        <td class="channel-cell channel-end is-${channel} ${ablyExcludedClass || statusCellClass(channelRow)}" data-channel="${channel}" data-queue-id="${escapeHtml(channelRow.queue_id)}">
-          ${renderEditableValue(channelRow, "recommended_action", channelRow.recommended_action || stockStatusLabel(stockStatusForRow(channelRow)), "strong")}
-          ${renderEditableValue(channelRow, "match_reason", channelRow.match_reason || "", "span")}
-          ${linkDecisionBadge(channelRow)}
         </td>
       `;
     })
