@@ -650,15 +650,23 @@ async function loadQueueRows() {
 
   queueRows = result.rows;
   queueRowsLoading = false;
-  queueRowsFullyLoaded = true;
+  queueRowsFullyLoaded = !result.partialError;
   await summaryPromise;
   await loadImageAssets(queueRows);
   await loadSellpiaSharedTagsForRows(queueRows);
   renderBatchHelper();
   const totalRows = numeric(queueSummary?.totals?.rows);
-  setStatus(totalRows
-    ? `${QUEUE_VIEW}: total ${totalRows.toLocaleString()} rows, loaded ${queueRows.length.toLocaleString()} rows for screen`
-    : `${QUEUE_VIEW}: loaded ${queueRows.length.toLocaleString()} rows for screen`, "ok");
+  if (result.partialError) {
+    console.warn("검수 큐 일부 구간 조회 실패", result.partialError);
+    setStatus(
+      `${QUEUE_VIEW}: ${queueRows.length.toLocaleString()}건까지 표시 중 - 일부 구간 조회 실패: ${result.partialError.message}`,
+      "warn"
+    );
+  } else {
+    setStatus(totalRows
+      ? `${QUEUE_VIEW}: total ${totalRows.toLocaleString()} rows, loaded ${queueRows.length.toLocaleString()} rows for screen`
+      : `${QUEUE_VIEW}: loaded ${queueRows.length.toLocaleString()} rows for screen`, "ok");
+  }
   renderDashboard();
   renderStockSummary();
   renderTable();
@@ -738,28 +746,58 @@ async function fetchQueuePageViaRest(from, to) {
   };
 }
 
+function isRetryableQueueError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    Number(error?.status || 0) >= 500 ||
+    error?.code === "57014" ||
+    message.includes("timeout") ||
+    message.includes("canceling statement")
+  );
+}
+
+async function fetchQueuePageWithRetry(from, requestedPageSize) {
+  let pageSize = Math.max(100, Number(requestedPageSize || SUPABASE_PAGE_SIZE));
+  let lastError = null;
+  while (pageSize >= 100) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await fetchQueuePageViaRest(from, from + pageSize - 1);
+      if (!result.error) return { ...result, pageSize };
+      lastError = result.error;
+      if (!isRetryableQueueError(result.error)) {
+        return { data: null, error: result.error, pageSize };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+    }
+    pageSize = Math.floor(pageSize / 2);
+  }
+  return { data: null, error: lastError, pageSize: 0 };
+}
+
 async function fetchQueueRows({ onProgress } = {}) {
   const rows = [];
   let from = 0;
   while (true) {
-    const to = from + SUPABASE_PAGE_SIZE - 1;
-    const { data, error } = await fetchQueuePageViaRest(from, to);
-    if (error) return { rows, error };
+    const { data, error, pageSize } = await fetchQueuePageWithRetry(from, SUPABASE_PAGE_SIZE);
+    if (error) {
+      if (rows.length) return { rows, error: null, partialError: error };
+      return { rows, error };
+    }
     rows.push(...(data || []));
     if (typeof onProgress === "function" && rows.length) {
       onProgress(rows, rows.length);
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
-    if (!data || data.length < SUPABASE_PAGE_SIZE) {
+    if (!data || data.length < pageSize) {
       break;
     }
-    from += SUPABASE_PAGE_SIZE;
+    from += data.length;
     if (from % 10000 === 0) {
       setStatus(`전체 검수 큐 조회 중... ${from.toLocaleString()}건 이상`, "loading");
     }
   }
-  return { rows, error: null };
+  return { rows, error: null, partialError: null };
 }
 
 function uniqueCompact(values) {
