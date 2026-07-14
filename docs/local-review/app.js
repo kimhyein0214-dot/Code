@@ -1953,48 +1953,23 @@ function renderDashboard() {
 }
 
 function renderStockSummary() {
-  const summaryValue = (field) => sumSummaryField(field);
-  if (queueSummary?.totals && summaryChannels()?.length) {
-    const setText = (id, value) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = Number(value || 0).toLocaleString();
-    };
-    setText("workflowCandidateCount", summaryValue("workflow_candidate_rows"));
-    setText("workflowHoldCount", summaryValue("workflow_hold_rows"));
-    setText("workflowCodeBlankCount", summaryValue("workflow_code_blank_rows"));
-    setText("workflowNoMatchCount", summaryValue("workflow_no_match_rows"));
-    setText("workflowExcludedCount", summaryValue("workflow_excluded_rows"));
-    setText("workflowBundleCount", summaryValue("workflow_bundle_rows"));
-    setText("workflowSuboptionCount", summaryValue("workflow_suboption_rows"));
-    setText("stockAllCount", numeric(queueSummary.by_channel?.smartstore?.smartstore_rows));
-    setText("stockMatchCount", numeric(queueSummary.by_channel?.smartstore?.stock_match_rows));
-    setText("stockDiffCount", numeric(queueSummary.by_channel?.smartstore?.stock_diff_rows));
-    setText("stockHoldCount", numeric(queueSummary.by_channel?.smartstore?.stock_hold_rows));
-    setText("stockMissingCount", numeric(queueSummary.by_channel?.smartstore?.stock_missing_rows));
-
-    document.querySelectorAll("[data-workflow-filter]").forEach((card) => {
-      card.classList.toggle("is-active", card.dataset.workflowFilter === activeWorkflowFilter);
-    });
-    return;
-  }
-
-  const visibleRows = queueRows.filter((row) => visibleChannels.has(row.source_channel));
-  const countGroupedRows = (predicate) => groupedMatrixRows(visibleRows.filter(predicate)).length;
+  const visibleRows = queueRows.filter((row) => row?.queue_id && visibleChannels.has(row.source_channel));
+  const countOptionRows = (predicate) => visibleRows.filter(predicate).length;
   const workflowCounts = {
-    candidate: countGroupedRows((row) => workflowBucket(row) === "candidate"),
-    hold: countGroupedRows((row) => workflowBucket(row) === "hold"),
-    code_blank: countGroupedRows((row) => workflowBucket(row) === "code_blank"),
-    no_match: countGroupedRows((row) => workflowBucket(row) === "no_match"),
-    excluded: countGroupedRows((row) => workflowBucket(row) === "excluded"),
-    bundle: countGroupedRows((row) => workflowBucket(row) === "bundle"),
-    suboption: countGroupedRows((row) => workflowBucket(row) === "suboption"),
+    candidate: countOptionRows((row) => workflowBucket(row) === "candidate"),
+    hold: countOptionRows((row) => workflowBucket(row) === "hold"),
+    code_blank: countOptionRows((row) => workflowBucket(row) === "code_blank"),
+    no_match: countOptionRows((row) => workflowBucket(row) === "no_match"),
+    excluded: countOptionRows((row) => workflowBucket(row) === "excluded"),
+    bundle: countOptionRows((row) => workflowBucket(row) === "bundle"),
+    suboption: countOptionRows((row) => workflowBucket(row) === "suboption"),
   };
   const counts = {
-    all: countGroupedRows((row) => row.source_channel === "smartstore"),
-    STOCK_MATCH: countGroupedRows((row) => row.source_channel === "smartstore" && stockStatusForRow(row) === "STOCK_MATCH"),
-    STOCK_DIFF: countGroupedRows((row) => row.source_channel === "smartstore" && stockStatusForRow(row) === "STOCK_DIFF"),
-    STOCK_HOLD_REVIEW: countGroupedRows((row) => row.source_channel === "smartstore" && stockStatusForRow(row) === "STOCK_HOLD_REVIEW"),
-    STOCK_SMARTSTORE_NOT_FOUND: countGroupedRows((row) => row.source_channel === "smartstore" && stockStatusForRow(row) === "STOCK_SMARTSTORE_NOT_FOUND"),
+    all: countOptionRows((row) => row.source_channel === "smartstore"),
+    STOCK_MATCH: countOptionRows((row) => row.source_channel === "smartstore" && stockStatusForRow(row) === "STOCK_MATCH"),
+    STOCK_DIFF: countOptionRows((row) => row.source_channel === "smartstore" && stockStatusForRow(row) === "STOCK_DIFF"),
+    STOCK_HOLD_REVIEW: countOptionRows((row) => row.source_channel === "smartstore" && stockStatusForRow(row) === "STOCK_HOLD_REVIEW"),
+    STOCK_SMARTSTORE_NOT_FOUND: countOptionRows((row) => row.source_channel === "smartstore" && stockStatusForRow(row) === "STOCK_SMARTSTORE_NOT_FOUND"),
   };
 
   const setText = (id, value) => {
@@ -6804,15 +6779,6 @@ function manualReviewBaseRows() {
 }
 
 function renderManualReviewSummary() {
-  if (queueSummary?.totals && summaryChannels()?.length) {
-    updateTextById("manualAutoCandidateCount", sumSummaryField("auto_candidate_rows") + sumSummaryField("fast_review_rows"));
-    updateTextById("manualFastReviewCount", sumSummaryField("fast_review_rows"));
-    updateTextById("manualConflictCount", sumSummaryField("conflict_rows"));
-    updateTextById("manualAblyDiscontinueCount", queueSummary.by_channel?.ably?.workflow_excluded_rows || 0);
-    updateTextById("manualPendingCount", sumSummaryField("manual_scope_rows"));
-    return;
-  }
-
   const visibleRows = queueRows.filter((row) => row?.queue_id && visibleChannels.has(row.source_channel));
   updateTextById("manualAutoCandidateCount", visibleRows.filter(isAutoApprovalCandidate).length);
   updateTextById("manualFastReviewCount", visibleRows.filter(isFastReviewCandidate).length);
