@@ -2032,38 +2032,43 @@ td.channel-cell span {
 
 .sticky-sellpia-image {
   left: 0;
-  width: 72px;
-  min-width: 72px;
-  max-width: 72px;
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
   text-align: center;
 }
 
 .sticky-sellpia-code {
-  left: 72px;
+  left: 96px;
   width: 112px;
   min-width: 112px;
   max-width: 112px;
 }
 
 .sticky-sellpia-product {
-  left: 184px;
+  left: 208px;
   width: 180px;
   min-width: 180px;
   max-width: 180px;
 }
 
 .sticky-sellpia-option {
-  left: 364px;
+  left: 388px;
   width: 150px;
   min-width: 150px;
   max-width: 150px;
 }
 
 .sticky-sellpia-status {
-  left: 514px;
+  left: 538px;
   width: 100px;
   min-width: 100px;
   max-width: 100px;
+}
+
+.matrix-table .sticky-sellpia-image .table-thumb {
+  width: 72px;
+  height: 72px;
 }
 
 .matrix-sheet-scroll.is-scrolled .sticky-sellpia-product {
@@ -2073,14 +2078,14 @@ td.channel-cell span {
 }
 
 .matrix-sheet-scroll.is-scrolled .sticky-sellpia-option {
-  left: 296px;
+  left: 320px;
   width: 104px;
   min-width: 104px;
   max-width: 104px;
 }
 
 .matrix-sheet-scroll.is-scrolled .sticky-sellpia-status {
-  left: 400px;
+  left: 424px;
 }
 
 .code-blank-cell {
@@ -2232,14 +2237,14 @@ td.channel-cell.is-playauto:not(.issue-cell):not(.excluded-cell):not(.ably-exclu
   background-color: #f5f3ff !important;
 }
 
-.matrix-table th:nth-child(3n + 5),
-.matrix-table td:nth-child(3n + 5) {
+.matrix-table th.channel-start,
+.matrix-table td.channel-start {
   border-left: 4px solid #334155 !important;
   box-shadow: inset 3px 0 0 rgba(255, 255, 255, 0.55);
 }
 
-.matrix-table th:nth-child(3n + 7),
-.matrix-table td:nth-child(3n + 7) {
+.matrix-table th.channel-end,
+.matrix-table td.channel-end {
   border-right: 2px solid #64748b !important;
 }
 
